@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.1] — 2026-03-09 — PyPI fix
+
+### Fixed
+- `pyproject.toml`: updated deprecated `license` table format to SPDX string
+- `pyproject.toml`: removed deprecated license classifier
+
+---
+
 ## [1.0.0] — 2026-03-09 — Initial public release
 
 ### Added
