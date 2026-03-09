@@ -44,14 +44,23 @@ all evaluation points, with optional bilateral coverage constraints.
 ### Option A — pip install (recommended)
 
 ```bash
-pip install git+https://github.com/flodelaplace/lab-camera-optimizer.git
+pip install lab-camera-optimizer
 ```
 
-Once installed, two commands are available anywhere in your terminal:
+Then initialise a working directory with the example configs:
 
 ```bash
-lab-camera-optimizer --config path/to/my_lab.yaml
-lab-camera-preview   --config path/to/my_lab.yaml
+mkdir my-lab && cd my-lab
+lab-camera-init
+```
+
+This copies the example YAML configs into `configs/` and creates the `outputs/`
+folder in your current directory. Three commands are then available:
+
+```bash
+lab-camera-init                                        # copy example configs (run once)
+lab-camera-preview   --config configs/example_simple.yaml
+lab-camera-optimizer --config configs/example_simple.yaml
 ```
 
 ### Option B — Clone and run locally

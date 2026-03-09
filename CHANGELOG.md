@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.2] — 2026-03-09 — pip install improvements
+
+### Added
+- `lab-camera-init` command: copies example configs and creates `outputs/`
+  folder in the current directory after `pip install`
+- `init_project.py` entry point bundled in the package
+
+---
+
 ## [1.0.1] — 2026-03-09 — PyPI fix
 
 ### Fixed
