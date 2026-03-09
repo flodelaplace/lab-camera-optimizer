@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software in a research publication, please cite it as below."
+type: software
+title: "Lab Camera Optimizer"
+abstract: >
+  An automated camera placement optimiser for markerless biomechanics motion
+  capture laboratories. Given a room layout, camera specifications and a capture
+  zone definition, the tool finds the configuration that maximises 3D full-body
+  coverage across all evaluation points, with bilateral coverage constraints and
+  line-of-sight occlusion handling.
+authors:
+  - family-names: Delaplace
+    given-names: Florian
+    orcid: "0009-0005-9139-7684"          # add your ORCID here if available
+    affiliation: "Universite Cote d’Azur, LAMHESS, Nice, France"    # add your institution here
+date-released: "2026-03-09"
+license: MIT
+repository-code: "https://github.com/flodelaplace/lab-camera-optimizer"
+keywords:
+  - biomechanics
+  - motion capture
+  - camera placement
+  - optimisation
+  - markerless
+  - line-of-sight
+  - Python
+

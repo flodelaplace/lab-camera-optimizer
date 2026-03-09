@@ -1,0 +1,200 @@
+# =============================================================
+# Lab Camera Optimizer — T-shaped capture zone
+# Use case: approach run + 90° direction change at the END
+#
+# Room  : 12m × 7m rectangle with a small structural pillar
+# Cameras: 10 wall-mounted cameras at 2.0m or 2.2m height
+#
+# T-shape (RELATIVE coordinates, junction at the end of the run):
+#
+#                        [8,-1.5]──[10,-1.5]
+#                          │  left   │     ← turn left  priority 1.8
+#                          │  turn   │
+#  [0,0]──────────────────[8, 0]──[10, 0]
+#    │   approach (8m×1m)  │ inter  │      priority 1.0 / 2.5
+#  [0,1]──────────────────[8, 1]──[10, 1]
+#                          │  right  │     ← turn right priority 1.8
+#                          │  turn   │
+#                        [8, 2.5]──[10,2.5]
+#
+#  Approach arm : X=0→8,  Y=0→1   (8m long × 1m wide)
+#  Turn arm     : X=8→10, Y=-1.5→2.5  (2m wide × 4m total)
+#  Intersection : X=8→10, Y=0→1   (2m × 1m — end of run)
+#
+#  The whole T translates via x_offsets / y_offsets.
+# =============================================================
+
+# ─────────────────────────────────────────────────────────────
+# 1. ROOM
+# ─────────────────────────────────────────────────────────────
+room:
+  corners:
+    - [0,  0]
+    - [12, 0]
+    - [12, 7]
+    - [0,  7]
+  height: 3.0
+
+# ─────────────────────────────────────────────────────────────
+# 2. OBSTACLES
+# ─────────────────────────────────────────────────────────────
+obstacles:
+  - type: rect
+    bounds: [5.8, 0.0, 6.1, 0.3]
+    height: 3.0
+    label: "Pillar"
+    can_mount_camera: false
+
+# ─────────────────────────────────────────────────────────────
+# 3. SUBJECT
+# ─────────────────────────────────────────────────────────────
+subject:
+  height: 1.9
+  foot_z: 0.0
+
+# ─────────────────────────────────────────────────────────────
+# 4. CAMERA SETS
+# ─────────────────────────────────────────────────────────────
+camera_sets:
+
+  - id: "cam_A"
+    name: "Wall camera"
+    mounting: "wall"
+    optional: false
+    fov_h_landscape: 110.0
+    fov_v_landscape:  70.0
+    fov_h_portrait:   70.0
+    fov_v_portrait:  110.0
+    max_range: 12.0
+    min_range:  0.5
+    height_options: [2.0, 2.2]
+    max_count:   10
+    min_spacing: 1.2
+    score_weight: 1.0
+    color: "#1f77b4"
+
+  - id: "cam_B"
+    name: "Tripod camera"
+    mounting: "tripod"
+    optional: true
+    fov_h_landscape:  80.0
+    fov_v_landscape:  58.0
+    fov_h_portrait:   58.0
+    fov_v_portrait:   80.0
+    max_range: 8.0
+    min_range: 0.5
+    height_options: [1.5]
+    max_count: 0          # disabled — set > 0 to re-enable
+    min_spacing: 1.5
+    walk_axis_margin: 0.7
+    score_weight: 0.6
+    color: "#d62728"
+
+# ─────────────────────────────────────────────────────────────
+# 5. CAPTURE ZONES
+# ─────────────────────────────────────────────────────────────
+#
+# All coordinates are RELATIVE.
+# The entire T moves together via the shared x_offsets / y_offsets.
+#
+#  Visual (relative coords):
+#
+#                        [8,-1.5]──[10,-1.5]
+#                           │  LEFT   │
+#                           │  TURN   │   priority 1.8
+#  [0,0]──────────────────[8, 0 ]──[10, 0]
+#    │                     ║ INTER ║
+#    │  APPROACH  (8m×1m)  ║  2.5  ║   priority 1.0
+#    │                     ║       ║
+#  [0,1]──────────────────[8, 1 ]──[10, 1]
+#                           │  RIGHT  │
+#                           │  TURN   │   priority 1.8
+#                        [8, 2.5]──[10,2.5]
+#
+capture_zones:
+
+  # ── Level 1 : approach corridor (8m × 1m) ────────────────────────────
+  # The full run-up. Covered but not the priority focus.
+  - id: "approach"
+    type: "polygon"
+    priority: 1.0
+    grid_step: 0.30
+    vertices:
+      - [1.0, 0.0]    # start bottom-left
+      - [7.0, 0.0]    # end   bottom-right  (junction with turn arm)
+      - [7.0, 1.0]    # end   top-right
+      - [1.0, 1.0]    # start top-left
+    placement:
+      # 3 X positions × 2 Y positions = 6 combos
+      # x_offsets : left end of approach at X = 0, 0.5, 1.0
+      # y_offsets : bottom of approach at  Y = 2.5, 3.0
+      x_offsets: [0.0, 0.5, 1.0]
+      y_offsets: [2.5, 3.0]
+
+  # ── Level 2 : turn arm — left side (toward +Y, 2m × 1.5m) ───────────
+  # The portion of the perpendicular corridor ABOVE the approach axis.
+  # Subject turns left here.
+  - id: "turn_left"
+    type: "polygon"
+    priority: 1.8
+    grid_step: 0.25
+    vertices:
+      - [8.0,  -1.5]  # far end top-left
+      - [10.0, -1.5]  # far end top-right
+      - [10.0,  0.0]  # meets approach top (intersection boundary)
+      - [8.0,   0.0]  # meets approach top (intersection boundary)
+    placement:
+      x_offsets: [0.0, 0.5, 1.0]
+      y_offsets: [2.5, 3.0]
+
+  # ── Level 2 : turn arm — right side (toward -Y, 2m × 1.5m) ──────────
+  # The portion of the perpendicular corridor BELOW the approach axis.
+  # Subject turns right here.
+  - id: "turn_right"
+    type: "polygon"
+    priority: 1.8
+    grid_step: 0.25
+    vertices:
+      - [8.0,  1.0]   # meets approach bottom (intersection boundary)
+      - [10.0, 1.0]   # meets approach bottom (intersection boundary)
+      - [10.0, 2.5]   # far end bottom-right
+      - [8.0,  2.5]   # far end bottom-left
+    placement:
+      x_offsets: [0.0, 0.5, 1.0]
+      y_offsets: [2.5, 3.0]
+
+  # ── Level 3 : intersection (2m × 1m) — maximum priority ──────────────
+  # Where the approach meets the turn arm. The direction change happens
+  # here — maximise camera coverage at all costs.
+  - id: "intersection"
+    type: "polygon"
+    priority: 2.5
+    grid_step: 0.15
+    vertices:
+      - [7.0,  0.0]   # bottom-left  (end of approach / top of right turn)
+      - [10.0, 0.0]   # bottom-right
+      - [10.0, 1.0]   # top-right
+      - [7.0,  1.0]   # top-left
+    placement:
+      x_offsets: [0.0, 0.5, 1.0]
+      y_offsets: [2.5, 3.0]
+
+# ─────────────────────────────────────────────────────────────
+# 6. OPTIMISATION PARAMETERS
+# ─────────────────────────────────────────────────────────────
+optimization:
+  target_coverage: 5
+  bilateral_weight: 0.9
+  vertical_coverage_threshold: 0.9
+  restarts_per_combo: 15
+  wall_step: 0.35
+  angle_steps: 24
+  tripod_grid_step: 0.80
+  distance_quality_factor: 0.005
+  # algo options:
+  #   greedy      → pure greedy (fast, original behaviour)
+  #   greedy_1opt → greedy init + 1-opt local search (better quality, recommended)
+  algo: "greedy_1opt"
+  early_stop: 5   # stop if no improvement after 5 consecutive restarts (0 = auto)
+  graph_mode: "all"
+

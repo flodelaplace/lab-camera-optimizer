@@ -1,0 +1,39 @@
+# ── Generated outputs — never commit these ───────────────────────────────────
+outputs/**
+!outputs/.gitkeep
+!outputs/graphs/.gitkeep
+!outputs/graphs_optimal/.gitkeep
+!outputs/preview_room/.gitkeep
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Personal / institution-specific configs ───────────────────────────────────
+# Keep only the anonymised example_*.yaml and T_zone_*.yaml configs.
+# Your personal lab config (labo_CHU.yaml etc.) stays local only.
+configs/labo_*.yaml
+configs/my_*.yaml
+# (keep the anonymised example_real_world.yaml)
+!configs/example_*.yaml
