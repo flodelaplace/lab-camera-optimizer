@@ -39,10 +39,27 @@ all evaluation points, with optional bilateral coverage constraints.
 
 ## Installation
 
+### Option A — pip install (recommended)
+
+```bash
+pip install git+https://github.com/flodelaplace/lab-camera-optimizer.git
+```
+
+Once installed, two commands are available anywhere in your terminal:
+
+```bash
+lab-camera-optimizer --config path/to/my_lab.yaml
+lab-camera-preview   --config path/to/my_lab.yaml
+```
+
+### Option B — Clone and run locally
+
 ```bash
 git clone https://github.com/flodelaplace/lab-camera-optimizer.git
 cd lab-camera-optimizer
 pip install -r requirements.txt
+python optimize.py     --config configs/example_simple.yaml
+python preview_room.py --config configs/example_simple.yaml
 ```
 
 Python ≥ 3.10 recommended.

@@ -171,7 +171,7 @@ def print_results(cam_A_list, cam_B_list, score, cfg, state):
 # MAIN LOOP
 # =============================================================
 
-if __name__ == "__main__":
+def main():
     run_ts      = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     config_name = os.path.splitext(os.path.basename(_args.config))[0]
 
@@ -503,4 +503,8 @@ if __name__ == "__main__":
     LOG.log(f"\nAll outputs saved in: {run_dir}")
     LOG.log(f"Log: {log_path}")
     LOG.close()
+
+
+if __name__ == "__main__":
+    main()
 

@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "lab-camera-optimizer"
+version = "1.0.0"
+description = "Automated camera placement optimiser for markerless biomechanics motion capture labs"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Florian Delaplace" }
+]
+keywords = [
+    "biomechanics", "motion-capture", "camera-placement",
+    "optimisation", "markerless", "line-of-sight"
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Intended Audience :: Science/Research",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "matplotlib>=3.7",
+    "pyyaml>=6.0",
+    "tqdm>=4.65",
+]
+
+[project.urls]
+Homepage      = "https://github.com/flodelaplace/lab-camera-optimizer"
+Repository    = "https://github.com/flodelaplace/lab-camera-optimizer"
+Documentation = "https://github.com/flodelaplace/lab-camera-optimizer/blob/main/ALGORITHM.md"
+"Bug Tracker" = "https://github.com/flodelaplace/lab-camera-optimizer/issues"
+
+[project.scripts]
+lab-camera-optimizer = "optimize:main"
+lab-camera-preview   = "preview_room:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*"]
+
+[tool.setuptools.package-data]
+"*" = ["configs/*.yaml"]
+
