@@ -5,6 +5,9 @@ outputs/**
 !outputs/graphs_optimal/.gitkeep
 !outputs/preview_room/.gitkeep
 
+# ── Documentation images — always track these ────────────────────────────────
+!docs/
+
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc

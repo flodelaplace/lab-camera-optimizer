@@ -27,6 +27,16 @@ all evaluation points, with optional bilateral coverage constraints.
 
 ---
 
+## Preview
+
+### Room layout (`preview_room.py`)
+![Room preview](docs/example_preview.png)
+
+### Optimisation result
+![Optimisation result](docs/example_result.png)
+
+---
+
 ## Installation
 
 ```bash
@@ -230,6 +240,51 @@ python optimize.py --config configs/my_lab.yaml
 | Top-right: **XY heatmap** | Number of cameras covering each floor position in 3D. |
 | Bottom-left: **XZ side view** | Number of cameras covering each height slice along the room length. |
 | Bottom-right: **Coverage bar chart** | Camera count per X position along the corridor. Green = target reached. |
+
+### Example terminal output
+
+```
+=================================================================
+  OPTIMAL CONFIGURATION
+=================================================================
+Score: 829.08
+Bilateral:  SOUTH=939.9 (49%)  NORTH=981.1 (51%)  balance=96% OK
+
+Wall cameras (cam_A):
+  A 1 [L][S]  pos=(0.00m, 0.36m)  h=2.2m
+       Pan: 10deg to the RIGHT  |  Tilt: 50.3deg downward
+  A 2 [P][S]  pos=(8.78m, 0.00m)  h=2.0m
+       Pan: 55deg to the RIGHT  |  Tilt: 36.9deg downward
+  A 3 [P][S]  pos=(4.22m, 0.00m)  h=2.0m
+       Pan: 55deg to the LEFT   |  Tilt: 36.9deg downward
+  A 4 [P][S]  pos=(11.95m, 0.00m)  h=2.2m
+       Pan: 55deg to the RIGHT  |  Tilt: 41.8deg downward
+  A 5 [P][N]  pos=(8.00m, 4.70m)  h=2.2m
+       Pan: 55deg to the RIGHT  |  Tilt: 20.7deg downward
+  A 6 [L][N]  pos=(0.00m, 2.53m)  h=2.0m
+       Pan: 10deg to the LEFT   |  Tilt: 42.9deg downward
+  A 7 [P][S]  pos=(2.04m, 0.00m)  h=2.2m
+       Pan: 55deg to the LEFT   |  Tilt: 41.8deg downward
+  A 8 [L][N]  pos=(2.04m, 4.07m)  h=2.2m
+       Pan: 35deg to the LEFT   |  Tilt: 25.0deg downward
+  A 9 [P][N]  pos=(0.00m, 4.34m)  h=2.2m
+       Pan: 25deg to the LEFT   |  Tilt: 23.0deg downward
+  A10 [L][N]  pos=(13.00m, 3.00m)  h=2.2m
+       Pan: 35deg to the RIGHT  |  Tilt: 38.0deg downward
+
+Tripod cameras (cam_B):
+  B1 [P]  pos=(1.10m, 0.40m)  h=1.5m  angle=20deg   tilt=28.8deg
+  B2 [L]  pos=(10.90m, 0.40m)  h=1.5m  angle=180deg  tilt=28.8deg
+=================================================================
+```
+
+Each camera line gives:
+- `[L]`/`[P]` — landscape or portrait orientation
+- `[S]`/`[N]` — south or north side of the capture axis
+- `pos` — XY position on the wall (metres)
+- `h` — mounting height (metres)
+- **Pan** — horizontal angle left/right from the wall normal
+- **Tilt** — vertical angle downward toward the subject
 
 ---
 
