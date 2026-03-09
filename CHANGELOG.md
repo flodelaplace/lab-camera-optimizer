@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.3] — 2026-03-09 — Fix configs bundling in pip wheel
+
+### Fixed
+- Configs were missing from the installed wheel (1.0.2).
+  They now live in `lab_camera_optimizer/configs/` — a proper Python package
+  directory that setuptools reliably includes in the wheel.
+- `init_project.py` now finds bundled configs via `importlib.util.find_spec`
+  regardless of the install method.
+
+---
+
 ## [1.0.2] — 2026-03-09 — pip install improvements
 
 ### Added

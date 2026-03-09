@@ -13,20 +13,31 @@ import sys
 
 def _find_bundled_configs():
     """
-    Locate the bundled configs/ directory whether the package is:
-      - installed via pip  (configs/ sits next to this file in site-packages)
-      - run locally from the repo root
+    Locate the bundled configs/ directory.
+    After pip install, configs live inside the lab_camera_optimizer package:
+      site-packages/lab_camera_optimizer/configs/
+    When run locally from the repo, they are at:
+      ./configs/  or  ./lab_camera_optimizer/configs/
     """
-    # Same directory as this file
-    here = os.path.dirname(os.path.abspath(__file__))
-    candidate = os.path.join(here, "configs")
-    if os.path.isdir(candidate):
-        return candidate
+    import importlib.util
 
-    # One level up (editable install or local run from a sub-dir)
-    candidate = os.path.join(os.path.dirname(here), "configs")
-    if os.path.isdir(candidate):
-        return candidate
+    # 1. Try via the installed lab_camera_optimizer package (pip install path)
+    spec = importlib.util.find_spec("lab_camera_optimizer")
+    if spec and spec.origin:
+        pkg_dir = os.path.dirname(spec.origin)
+        candidate = os.path.join(pkg_dir, "configs")
+        if os.path.isdir(candidate):
+            return candidate
+
+    # 2. Local repo: configs/ next to this file
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in [
+        os.path.join(here, "configs"),
+        os.path.join(here, "lab_camera_optimizer", "configs"),
+        os.path.join(os.path.dirname(here), "configs"),
+    ]:
+        if os.path.isdir(candidate):
+            return candidate
 
     return None
 

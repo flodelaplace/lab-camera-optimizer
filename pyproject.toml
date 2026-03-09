@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lab-camera-optimizer"
-version = "1.0.2"
+version = "1.0.3"
 description = "Automated camera placement optimiser for markerless biomechanics motion capture labs"
 readme = "README.md"
 license = "MIT"
@@ -46,10 +46,10 @@ lab-camera-init      = "init_project:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core*"]
+include = ["core*", "lab_camera_optimizer*"]
 
 [tool.setuptools.package-data]
-"*" = ["configs/*.yaml"]
+"lab_camera_optimizer" = ["configs/*.yaml"]
 
 # Include top-level scripts and configs in the source distribution
 [tool.setuptools]

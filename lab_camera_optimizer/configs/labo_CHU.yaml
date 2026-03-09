@@ -1,0 +1,268 @@
+# =============================================================
+# Lab Camera Optimizer — Configuration file
+# Project : CHU Biomechanics Lab — L-shaped room
+# =============================================================
+# Units : metres for all distances, degrees for all angles.
+# Angles follow the standard mathematical convention:
+#   0° = East (+X), 90° = North (+Y), 180°/-180° = West (-X)
+# =============================================================
+
+# ─────────────────────────────────────────────────────────────
+# 1. ROOM GEOMETRY
+# ─────────────────────────────────────────────────────────────
+room:
+  # List of (X, Y) vertices of the room polygon, in order (CW or CCW).
+  # The room is assumed to be a flat floor plan.
+  corners:
+    - [0,   0  ]
+    - [13,  0  ]
+    - [13,  3.0]
+    - [8,   3.0]
+    - [8,   4.7]
+    - [0,   4.7]
+
+  # Floor-to-ceiling height (metres)
+  height: 3.0
+
+
+# ─────────────────────────────────────────────────────────────
+# 2. OBSTACLES
+# ─────────────────────────────────────────────────────────────
+# Two types supported:
+#
+#   type: rect    → axis-aligned rectangle
+#                   bounds: [x_min, y_min, x_max, y_max]
+#
+#   type: polygon → arbitrary polygon
+#                   vertices: [[x0,y0],[x1,y1],...]  (in order)
+#
+# height: floor-to-ceiling height of the obstacle (metres).
+#   = room.height  → fully blocks line-of-sight (wall/pillar)
+#   < room.height  → partial height (object, furniture)
+#                    does NOT block line-of-sight above it
+#
+# can_mount_camera: true → wall cameras can be placed on this surface
+#                   false (default) → no camera on this obstacle
+
+obstacles:
+  - type: rect
+    bounds: [1.70, 0.00, 2.04, 0.34]
+    height: 3.0
+    label: "Stub 1"
+    can_mount_camera: true
+
+  - type: rect
+    bounds: [5.39, 0.00, 5.59, 0.42]
+    height: 3.0
+    label: "Stub 2"
+    can_mount_camera: true
+
+  - type: rect
+    bounds: [8.94, 0.00, 9.14, 0.42]
+    height: 3.0
+    label: "Stub 3"
+    can_mount_camera: true
+
+  - type: rect
+    bounds: [5.65, 3.85, 5.85, 4.25]
+    height: 3.0
+    label: "Stub 4"
+    can_mount_camera: true
+
+  - type: rect
+    bounds: [5.65, 2.85, 6.35, 3.55]
+    height: 1.4
+    label: "Object 1"
+    can_mount_camera: false   # partial-height object, no camera mount
+
+  - type: polygon
+    vertices:
+      - [1.47, 4.70]
+      - [1.47, 4.38]
+      - [1.71, 4.38]
+      - [1.71, 3.88]
+      - [2.04, 3.88]
+      - [2.04, 4.27]
+      - [3.02, 4.27]
+      - [3.02, 4.70]
+    height: 3.0
+    label: "Wall N"
+    can_mount_camera: true
+
+
+# ─────────────────────────────────────────────────────────────
+# 3. SUBJECT (person being recorded)
+# ─────────────────────────────────────────────────────────────
+subject:
+  height: 1.9              # total height feet-to-head (metres)
+  foot_z: 0.0              # height of feet above floor (metres, usually 0)
+
+
+# ─────────────────────────────────────────────────────────────
+# 4. CAMERA SETS
+# ─────────────────────────────────────────────────────────────
+# Define as many camera sets as needed.
+# Each set is an independent group of cameras with its own FOV,
+# mounting type, placement constraints and score weight.
+#
+# mounting:
+#   wall    → cameras placed on room walls and floor-to-ceiling obstacles
+#   tripod  → cameras placed freely inside the room on a tripod stand
+#   ceiling → (future) cameras hung from the ceiling
+#
+# optional: true → this entire set is skipped if max_count is 0
+
+camera_sets:
+
+  - id: "cam_A"
+    name: "ZED2i"
+    mounting: "wall"
+    optional: false
+
+    # Field of view (degrees) — landscape and portrait orientations
+    fov_h_landscape: 110.0
+    fov_v_landscape:  70.0
+    fov_h_portrait:   70.0
+    fov_v_portrait:  110.0
+
+    # Detection range (metres)
+    max_range: 15.0
+    min_range:  0.5         # blind zone closer than this
+
+    # Camera heights to evaluate (metres).
+    # Each candidate position is tested at ALL heights listed here.
+    # A single optimised configuration can mix different heights.
+    height_options: [2.0, 2.2]
+
+    # Placement constraints
+    max_count: 10           # maximum number of cameras to place
+    min_spacing: 1.5        # minimum distance between two cameras of this set (m)
+
+    # Score contribution
+    score_weight: 1.0       # relative weight vs other camera sets
+
+    # Visualisation
+    color: "#1f77b4"        # hex colour for graphs
+
+
+  - id: "cam_B"
+    name: "iPad"
+    mounting: "tripod"
+    optional: true          # set max_count: 0 to fully disable
+
+    fov_h_landscape:  80.0
+    fov_v_landscape:  58.0
+    fov_h_portrait:   58.0
+    fov_v_portrait:   80.0
+
+    max_range: 10.0
+    min_range:  0.5
+
+    height_options: [1.5]
+
+    max_count: 2
+    min_spacing: 1.5
+
+    # Tripod-specific: minimum distance from the capture axis (metres).
+    # Prevents the tripod from blocking the walking path.
+    walk_axis_margin: 0.7
+
+    score_weight: 0.6
+
+    color: "#d62728"
+
+
+# ─────────────────────────────────────────────────────────────
+# 5. CAPTURE ZONES
+# ─────────────────────────────────────────────────────────────
+# Zones define WHERE the cameras must provide coverage and HOW MUCH
+# each zone matters (priority weight in the global score).
+#
+# Zone types:
+#   corridor  → rectangular strip, explored at several X/Y positions
+#   sub_zone  → rectangular strip contained within a parent corridor
+#   point     → circular zone (e.g. a chair test)
+#
+# The optimiser tests all combinations of (x_start, y_position, sub_offset)
+# and keeps the globally best placement.
+
+capture_zones:
+
+  # ── Primary corridor (total walking path) ─────────────────
+  - id: "full_corridor"
+    type: "corridor"
+    priority: 0.5           # lower weight: coverage outside analysis is a bonus
+
+    length: 10.0            # length of the corridor (metres, along main axis)
+    width:   1.0            # transverse width of the evaluation strip (metres)
+
+    # Positions to explore during optimisation
+    placement:
+      # X start positions of the corridor to test (metres from room origin)
+      x_start_options: [1.0, 2.0]
+      # Transverse (Y) axis positions of the corridor centre to test
+      y_options: [1.0, 1.4, 1.8]
+
+  # ── Analysis zone (priority sub-zone inside the corridor) ──
+  - id: "analysis_zone"
+    type: "sub_zone"
+    priority: 1.0           # main zone: highest weight on coverage score
+
+    length: 6.0             # length of the priority sub-zone (metres)
+    contained_in: "full_corridor"
+
+    # Offsets (metres) from the corridor start where the sub-zone can begin.
+    # e.g. offset 1.0 → sub-zone starts 1m after corridor start (1m run-up)
+    #      offset 3.0 → sub-zone starts 3m in (3m run-up, 1m deceleration)
+    offset_options: [1.0, 2.0, 3.0]
+
+  # ── STS point (sit-to-stand chair test — secondary priority zone) ──
+  - id: "sts_point"
+    type: "point"
+    priority: 2.0           # highest weight: this spot must be very well covered
+
+    radius: 0.6             # coverage circle radius (metres)
+    contained_in: "analysis_zone"
+
+    # If true, the optimiser searches automatically for the best position
+    # of this point inside the parent zone (maximises camera coverage score).
+    auto_optimize: true
+
+
+# ─────────────────────────────────────────────────────────────
+# 6. OPTIMISATION PARAMETERS
+# ─────────────────────────────────────────────────────────────
+optimization:
+
+  # Number of cameras required per evaluation point to consider it "well covered"
+  target_coverage: 6
+
+  # Bilateral constraint weight [0.0 – 1.0]
+  # 0.0 = disabled (pure coverage maximisation)
+  # 1.0 = fully enforced (score 0 if only one side covered)
+  # Recommended: 0.6 – 0.8 for biomechanics labs
+  bilateral_weight: 0.9
+
+  # Fraction of the subject body (feet→head) that must be visible
+  # for a camera to "count" at an evaluation point.
+  vertical_coverage_threshold: 0.9
+
+  # Greedy optimisation restarts per combination of zone positions
+  restarts_per_combo: 10
+
+  # Candidate generation resolution
+  wall_step: 0.35           # spacing between camera positions along walls (m)
+  angle_steps: 24           # number of yaw angles tested per wall position
+  tripod_grid_step: 0.70    # spacing of the interior tripod grid (m)
+  distance_quality_factor: 0.001
+
+  # Distance quality decay: score multiplier = 1 / (1 + k * d²)
+  # Higher k → strong penalty for distant cameras
+  # k=0.01: 0.96 @ 2m | 0.80 @ 5m | 0.50 @ 10m
+  # Graph generation mode:
+  #   all            → save a graph for every optimisation attempt (verbose)
+  #   records_only   → save only when a new global record is set
+  #   best_per_combo → save only the best result of each zone combination
+  algo: "greedy_1opt"   # greedy | greedy_1opt
+  graph_mode: "all"
+

@@ -1,0 +1,180 @@
+# =============================================================
+# Lab Camera Optimizer — Minimal example configuration
+# Simple rectangular room, one wall-mounted camera set, no obstacles.
+# A good starting point for any new lab.
+# =============================================================
+# Units : metres for distances, degrees for angles.
+# =============================================================
+
+# ─────────────────────────────────────────────────────────────
+# 1. ROOM
+# ─────────────────────────────────────────────────────────────
+room:
+  # Simple 10m × 6m rectangle
+  corners:
+    - [0,  0]
+    - [10, 0]
+    - [10, 6]
+    - [0,  6]
+  height: 3.0   # floor-to-ceiling (metres)
+
+
+# ─────────────────────────────────────────────────────────────
+# 2. OBSTACLES
+# ─────────────────────────────────────────────────────────────
+# No obstacles in this minimal example.
+# To add one, uncomment and edit the block below:
+#
+# obstacles:
+#   - type: rect
+#     bounds: [2.0, 0.0, 2.2, 0.4]   # [x_min, y_min, x_max, y_max]
+#     height: 3.0
+#     label: "Pillar"
+#     can_mount_camera: false
+obstacles: []
+
+
+# ─────────────────────────────────────────────────────────────
+# 3. SUBJECT
+# ─────────────────────────────────────────────────────────────
+subject:
+  height: 1.9   # subject height feet-to-head (metres)
+  foot_z: 0.0   # height of feet above floor (almost always 0)
+
+
+# ─────────────────────────────────────────────────────────────
+# 4. CAMERA SETS
+# ─────────────────────────────────────────────────────────────
+camera_sets:
+
+  - id: "cam_A"
+    name: "Wall camera"
+    mounting: "wall"
+    optional: false
+
+    # Field of view — landscape and portrait orientations (degrees)
+    fov_h_landscape: 110.0
+    fov_v_landscape:  70.0
+    fov_h_portrait:   70.0
+    fov_v_portrait:  110.0
+
+    # Detection range
+    max_range: 12.0   # metres
+    min_range:  0.5   # blind zone closer than this
+
+    # Heights to test (metres). Mix different heights in one run.
+    height_options: [2.0]
+
+    max_count:   8     # maximum cameras to place
+    min_spacing: 1.5   # minimum distance between two cameras of this set
+
+    score_weight: 1.0
+    color: "#1f77b4"
+
+  # Optional tripod camera set — set max_count: 0 to disable entirely
+  - id: "cam_B"
+    name: "Tripod camera"
+    mounting: "tripod"
+    optional: true
+
+    fov_h_landscape:  80.0
+    fov_v_landscape:  58.0
+    fov_h_portrait:   58.0
+    fov_v_portrait:   80.0
+
+    max_range: 8.0
+    min_range: 0.5
+
+    height_options: [1.5]
+
+    max_count: 0       # set to 0 = disabled, set to 2 = enable 2 tripod cameras
+    min_spacing: 1.5
+    walk_axis_margin: 0.7   # tripod must stay at least this far from the capture axis
+
+    score_weight: 0.6
+    color: "#d62728"
+
+
+# ─────────────────────────────────────────────────────────────
+# 5. CAPTURE ZONES
+# ─────────────────────────────────────────────────────────────
+# Zone types:
+#
+#   corridor   → rectangular strip swept at multiple X/Y positions
+#   sub_zone   → rectangle contained inside a corridor
+#   point      → circle (e.g. chair test)
+#   polygon    → arbitrary shape (L, T, U, cross…) — fixed position in the room
+#                vertices: list of (X,Y) corners in order
+#                grid_step: evaluation point density inside (metres)
+#
+capture_zones:
+
+  # Full walking corridor (low priority — bonus coverage)
+  - id: "full_corridor"
+    type: "corridor"
+    priority: 0.5
+    length: 8.0     # total corridor length (metres)
+    width:  1.0     # transverse evaluation strip width
+    placement:
+      x_start_options: [1.0]    # where the corridor can start along X
+      y_options: [3.0]          # Y axis position (centre of room = 3.0m)
+
+  # Priority analysis zone inside the corridor
+  - id: "analysis_zone"
+    type: "sub_zone"
+    priority: 1.0
+    length: 4.0     # length of the priority sub-zone
+    contained_in: "full_corridor"
+    offset_options: [2.0]   # starts 2m after corridor start → 2m run-up
+
+  # Key point (e.g. chair test, STS) — highest priority
+  - id: "key_point"
+    type: "point"
+    priority: 2.0
+    radius: 0.5
+    contained_in: "analysis_zone"
+    auto_optimize: true   # optimiser finds the best position automatically
+
+  # ── Example polygon zone (commented out — uncomment to use) ──────────
+  # Vertices are in RELATIVE coordinates (origin = 0,0 = bottom-left corner
+  # of the shape). The placement.x_offsets and y_offsets define how to
+  # translate the whole shape across the room — like a corridor sweep but
+  # for any arbitrary shape (L, T, U, cross…).
+  #
+  # - id: "L_shaped_zone"
+  #   type: "polygon"
+  #   priority: 1.5
+  #   grid_step: 0.20     # evaluation point spacing inside the polygon (metres)
+  #   vertices:           # relative (X, Y) corners — origin is bottom-left of shape
+  #     - [0.0, 0.0]      # bottom-left
+  #     - [6.0, 0.0]      # bottom-right of horizontal arm
+  #     - [6.0, 1.5]      # top-right of horizontal arm
+  #     - [2.0, 1.5]      # inner corner of the L
+  #     - [2.0, 4.0]      # top of vertical arm
+  #     - [0.0, 4.0]      # top-left
+  #   placement:
+  #     x_offsets: [0.5, 1.0, 1.5]   # translate shape by these X values
+  #     y_offsets: [1.0, 1.5]         # translate shape by these Y values
+  #     # → 3 × 2 = 6 polygon placements tested in addition to corridor sweeps
+
+
+# ─────────────────────────────────────────────────────────────
+# 6. OPTIMISATION PARAMETERS
+# ─────────────────────────────────────────────────────────────
+optimization:
+  target_coverage: 3             # target number of cameras per evaluation point
+  bilateral_weight: 0.9         # 0.0 = disabled, 1.0 = fully enforced
+  vertical_coverage_threshold: 0.9
+  restarts_per_combo: 10         # lower = faster (increase for better results)
+  wall_step: 0.40                # camera spacing along walls (m) — increase for speed
+  angle_steps: 20                # yaw angles tested per position
+  tripod_grid_step: 0.80
+  distance_quality_factor: 0.01
+
+  # Graph generation mode:
+  #   all            → save a graph for every optimisation attempt (verbose)
+  #   records_only   → save only when a new global record is set
+  #   best_per_combo → save only the best result of each zone combination
+  algo: "greedy_1opt"   # greedy | greedy_1opt
+  graph_mode: "all"
+
