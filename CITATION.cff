@@ -11,8 +11,8 @@ abstract: >
 authors:
   - family-names: Delaplace
     given-names: Florian
-    orcid: "0009-0005-9139-7684"          # add your ORCID here if available
-    affiliation: "Universite Cote d’Azur, LAMHESS, Nice, France"    # add your institution here
+    orcid: "0009-0005-9139-7684"
+    affiliation: "Universite Cote d’Azur, LAMHESS, Nice, France"
 date-released: "2026-03-09"
 license: MIT
 repository-code: "https://github.com/flodelaplace/lab-camera-optimizer"

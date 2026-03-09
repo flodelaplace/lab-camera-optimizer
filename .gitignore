@@ -1,9 +1,8 @@
 # ── Generated outputs — never commit these ───────────────────────────────────
+# Each run creates its own subdirectory: outputs/<config>_<YYYYMMDD>_<HHMMSS>/
+# None of this should be committed.
 outputs/**
 !outputs/.gitkeep
-!outputs/graphs/.gitkeep
-!outputs/graphs_optimal/.gitkeep
-!outputs/preview_room/.gitkeep
 
 # ── Documentation images — always track these ────────────────────────────────
 !docs/

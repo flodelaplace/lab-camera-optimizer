@@ -172,10 +172,24 @@ def print_results(cam_A_list, cam_B_list, score, cfg, state):
 # =============================================================
 
 if __name__ == "__main__":
-    run_ts     = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path   = os.path.join(_HERE, "outputs", f"log_{run_ts}.txt")
-    graphs_dir = os.path.join(_HERE, "outputs", "graphs")
-    os.makedirs(graphs_dir, exist_ok=True)
+    run_ts      = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    config_name = os.path.splitext(os.path.basename(_args.config))[0]
+
+    # ── Unique run directory ──────────────────────────────────────────────
+    # Structure:
+    #   outputs/
+    #     <config>_<YYYYMMDD>_<HHMMSS>/
+    #       log.txt
+    #       graphs_all/          ← every attempt (graph_mode=all)
+    #       graphs_best_per_combo/  ← best result per combo
+    #       FINAL_RESULT.png     ← global best at the end
+    run_dir          = os.path.join(_HERE, "outputs", f"{config_name}_{run_ts}")
+    graphs_all_dir   = os.path.join(run_dir, "graphs_all")
+    graphs_combo_dir = os.path.join(run_dir, "graphs_best_per_combo")
+    log_path         = os.path.join(run_dir, "log.txt")
+
+    os.makedirs(graphs_all_dir,   exist_ok=True)
+    os.makedirs(graphs_combo_dir, exist_ok=True)
     LOG.init(log_path)
 
     cam_A = next(c for c in CFG.camera_sets if c.mounting == "wall")
@@ -194,7 +208,8 @@ if __name__ == "__main__":
     LOG.log(f"Bilateral weight : {CFG.BILATERAL_WEIGHT}"
             f"  {'(disabled)' if CFG.BILATERAL_WEIGHT == 0 else ''}")
     LOG.log(f"Target coverage  : {CFG.TARGET_COVERAGE} cameras per point")
-    LOG.log(f"Log: {log_path}\n")
+    LOG.log(f"Run directory    : {run_dir}")
+    LOG.log(f"Log              : {log_path}\n")
 
     # ── Zone sweep parameters ─────────────────────────────────────────────
     # Corridor parameters are optional — a config may use only polygon zones.
@@ -407,8 +422,8 @@ if __name__ == "__main__":
                     record_marker = f"_RECORD{record_counter[0]}" if is_rec else ""
                     graph_fname = (f"attempt{attempt:02d}_{combo_label_short}"
                                    f"_score{sc:.0f}{record_marker}.png")
-                    graph_path = os.path.join(graphs_dir, graph_fname)
-                    os.makedirs(graphs_dir, exist_ok=True)
+                    graph_path = os.path.join(graphs_all_dir, graph_fname)
+                    os.makedirs(graphs_all_dir, exist_ok=True)
                     s = dict(state)
                     s["sts_x"] = sts_pos[0]; s["sts_y"] = sts_pos[1]
                     visualize_solution(ca, cb, sc, CFG, s,
@@ -447,10 +462,8 @@ if __name__ == "__main__":
                     LOG.log("")
 
                 # ── Best-per-combo graph — generated immediately ──────────
-                graphs_opt = os.path.join(_HERE, "outputs", "graphs_optimal")
-                os.makedirs(graphs_opt, exist_ok=True)
                 combo_graph = os.path.join(
-                    graphs_opt,
+                    graphs_combo_dir,
                     f"{combo_label_short}_score{best_score:.0f}.png")
                 visualize_solution(best_cam_A, best_cam_B, best_score, CFG,
                                    dict(state, sts_x=best_sts[0], sts_y=best_sts[1]),
@@ -468,29 +481,26 @@ if __name__ == "__main__":
     print_results(global_best_cam_A, global_best_cam_B,
                   global_best_score, CFG, global_best_state)
 
-    # Final graph
-    final_graph = os.path.join(
-        _HERE, "outputs",
-        f"FINAL_RESULT_{run_ts}_score{global_best_score:.3f}.png")
+    # ── Final graph ───────────────────────────────────────────────────────
+    final_graph = os.path.join(run_dir, f"FINAL_RESULT_score{global_best_score:.0f}.png")
     LOG.log(f"\nFinal graph: {final_graph}")
     visualize_solution(global_best_cam_A, global_best_cam_B,
                        global_best_score, CFG, global_best_state,
                        show_window=True, save_path=final_graph)
 
-    # Per-combo optimal graphs
-    graphs_opt = os.path.join(_HERE, "outputs", "graphs_optimal")
-    os.makedirs(graphs_opt, exist_ok=True)
+    # ── Per-combo ranked graphs ───────────────────────────────────────────
     sorted_combos = sorted(combo_best_configs.items(),
                            key=lambda x: x[1]["score"], reverse=True)
     for rank, (label, cfg_combo) in enumerate(sorted_combos, start=1):
         short = f"combo{cfg_combo['combo_idx']:03d}"
-        gp = os.path.join(graphs_opt, f"rank{rank:02d}_{short}_score{cfg_combo['score']:.0f}.png")
+        gp = os.path.join(graphs_combo_dir,
+                          f"rank{rank:02d}_{short}_score{cfg_combo['score']:.0f}.png")
         LOG.log(f"  [{rank:2d}]  {label}  score={cfg_combo['score']:.3f}  ->  {gp}")
         visualize_solution(cfg_combo["cam_A"], cfg_combo["cam_B"],
                            cfg_combo["score"], CFG, cfg_combo["state"],
                            show_window=False, save_path=gp)
 
-    LOG.log(f"\nAll outputs in: {os.path.join(_HERE, 'outputs')}/")
-    LOG.log(f"Full log: {log_path}")
+    LOG.log(f"\nAll outputs saved in: {run_dir}")
+    LOG.log(f"Log: {log_path}")
     LOG.close()
 
