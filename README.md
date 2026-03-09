@@ -6,6 +6,8 @@ Given a room layout, a set of cameras and a capture zone, this tool finds the
 configuration that maximises 3D body coverage (head-to-toe visibility) across
 all evaluation points, with optional bilateral coverage constraints.
 
+![Project overview](docs/Lab_camera_optimizer_overview.png)
+
 ---
 
 ## Features
