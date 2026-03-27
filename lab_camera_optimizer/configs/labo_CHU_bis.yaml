@@ -1,0 +1,190 @@
+# =============================================================
+# Lab Camera Optimizer — Configuration file (OPTIMIZATION MODE)
+# Project : CHU Biomechanics Lab — L-shaped room (7 Cams + 2 iPads)
+# =============================================================
+# Units : metres for all distances, degrees for all angles.
+# Angles follow the standard mathematical convention:
+#   0° = East (+X), 90° = North (+Y), 180°/-180° = West (-X)
+# =============================================================
+
+# ─────────────────────────────────────────────────────────────
+# 1. ROOM GEOMETRY
+# ─────────────────────────────────────────────────────────────
+room:
+  corners:
+    - [0,   0  ]
+    - [13,  0  ]
+    - [13,  3.0]
+    - [8,   3.0]
+    - [8,   4.7]
+    - [0,   4.7]
+  height: 3.0
+
+
+# ─────────────────────────────────────────────────────────────
+# 2. OBSTACLES
+# ─────────────────────────────────────────────────────────────
+obstacles:
+  - type: rect
+    bounds: [1.70, 0.00, 2.04, 0.34]
+    height: 3.0
+    label: "Stub 1"
+    can_mount_camera: true
+
+  - type: rect
+    bounds: [5.39, 0.00, 5.59, 0.42]
+    height: 3.0
+    label: "Stub 2"
+    can_mount_camera: true
+
+  - type: rect
+    bounds: [8.94, 0.00, 9.14, 0.42]
+    height: 3.0
+    label: "Stub 3"
+    can_mount_camera: true
+
+  - type: rect
+    bounds: [5.65, 3.85, 5.85, 4.25]
+    height: 3.0
+    label: "Stub 4"
+    can_mount_camera: true
+
+  - type: rect
+    bounds: [5.65, 2.85, 6.35, 3.55]
+    height: 1.4
+    label: "Object 1"
+    can_mount_camera: false
+
+  - type: polygon
+    vertices:
+      - [1.47, 4.70]
+      - [1.47, 4.38]
+      - [1.71, 4.38]
+      - [1.71, 3.88]
+      - [2.04, 3.88]
+      - [2.04, 4.27]
+      - [3.02, 4.27]
+      - [3.02, 4.70]
+    height: 3.0
+    label: "Wall N"
+    can_mount_camera: true
+
+
+# ─────────────────────────────────────────────────────────────
+# 3. SUBJECT (person being recorded)
+# ─────────────────────────────────────────────────────────────
+subject:
+  height: 1.9
+  foot_z: 0.0
+
+
+# ─────────────────────────────────────────────────────────────
+# 4. CAMERA SETS
+# ─────────────────────────────────────────────────────────────
+camera_sets:
+
+  - id: "cam_A"
+    name: "ZED2i"
+    mounting: "wall"
+    optional: false
+
+    fov_h_landscape: 110.0
+    fov_v_landscape:  70.0
+    fov_h_portrait:   70.0
+    fov_v_portrait:  110.0
+
+    max_range: 15.0
+    min_range:  0.5
+
+    # Hauteurs testées par l'optimiseur (en mètres)
+    height_options: [2.0, 2.15, 2.3]
+
+    # Limite exacte de caméras à placer
+    max_count: 7
+    min_spacing: 1.5
+
+    score_weight: 1.0
+    color: "#1f77b4"
+
+
+  - id: "cam_B"
+    name: "iPad"
+    mounting: "tripod"
+    optional: true
+
+    fov_h_landscape:  80.0
+    fov_v_landscape:  58.0
+    fov_h_portrait:   58.0
+    fov_v_portrait:   80.0
+
+    max_range: 10.0
+    min_range:  0.5
+
+    height_options: [1.5]
+
+    # 2 iPads demandés
+    max_count: 2
+    min_spacing: 1.5
+    walk_axis_margin: 0.7
+
+    score_weight: 0.6
+    color: "#d62728"
+
+
+# ─────────────────────────────────────────────────────────────
+# 5. CAPTURE ZONES
+# ─────────────────────────────────────────────────────────────
+capture_zones:
+
+  - id: "full_corridor"
+    type: "corridor"
+    priority: 0.5
+
+    length: 8.0
+    width:   1.0
+
+    placement:
+      # Placement figé selon tes mesures :
+      # Débute à X=2.0m et centré sur Y=1.70m
+      x_start_options: [2.0, 3.0]
+      y_options: [1.50, 1.70 , 1.90]
+
+  - id: "analysis_zone"
+    type: "sub_zone"
+    priority: 1.0
+
+    length: 6.0
+    contained_in: "full_corridor"
+    
+    # Décalage de 1m par rapport au début du couloir (run-up)
+    offset_options: [1.0]
+
+  - id: "sts_point"
+    type: "point"
+    priority: 2.0
+
+    radius: 0.6
+    contained_in: "analysis_zone"
+    auto_optimize: true
+
+
+# ─────────────────────────────────────────────────────────────
+# 6. OPTIMISATION PARAMETERS
+# ─────────────────────────────────────────────────────────────
+optimization:
+  # Objectif de couverture (modulable si besoin, 6 est très robuste)
+  target_coverage: 6
+  bilateral_weight: 0.8
+  vertical_coverage_threshold: 0.9
+  
+  # L'optimiseur essaiera 10 fois de placer les caméras depuis 0 
+  # et gardera le meilleur setup trouvé.
+  restarts_per_combo: 50
+
+  wall_step: 0.35
+  angle_steps: 24
+  tripod_grid_step: 0.70
+  distance_quality_factor: 0.015
+
+  algo: "greedy_1opt"
+  graph_mode: "all"

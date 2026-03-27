@@ -1,0 +1,66 @@
+# ==============================================================================
+# EXAMPLE CONFIG: EVALUATION MODE
+# ==============================================================================
+# This file demonstrates the "Evaluation Mode". Instead of optimizing camera
+# positions, it evaluates a predefined setup from the `evaluation_setup`
+# section below.
+#
+# To run:
+#   python evaluate.py --config configs/example_evaluation_CHU.yaml
+#
+# ==============================================================================
+
+room:
+  corners: [[0,0], [13,0], [13,5], [10,5], [10,3], [0,3]] # L-shaped room
+  height: 3.0
+
+obstacles:
+  - type: polygon
+    vertices: [[1.0,0.0],[1.2,0.0],[1.2,0.5],[1.0,0.5]]
+    height: 3.0
+    label: "Pillar A"
+    can_mount_camera: false
+
+subject:
+  height: 1.8
+  foot_z: 0.0
+
+camera_sets:
+  - id: "wall_cams"
+    name: "Wall-mounted Vicon"
+    mounting: "wall"
+    fov_h_landscape: 80.0
+    fov_v_landscape: 50.0
+    fov_h_portrait: 50.0
+    fov_v_portrait: 80.0
+    height_options: [2.0, 2.2, 2.4]
+    max_range: 12.0
+    min_range: 0.5
+    max_count: 8
+    min_spacing: 1.5
+    score_weight: 1.0
+    color: "#1f77b4"
+
+capture_zones:
+  - id: "analysis_zone"
+    type: "corridor"
+    priority: 1.0
+    length: 6.0
+    width: 1.2
+    placement:
+      x_start_options: [3.0]
+      y_options: [1.5]
+
+optimization:
+  target_coverage: 4
+  bilateral_weight: 0.8
+  vertical_coverage_threshold: 0.9
+
+evaluation_setup:
+  fixed_cameras:
+    - { set_id: "wall_cams", x: 0.1,  y: 0.1, z: 2.2, angle: 45,  orientation: "L" }
+    - { set_id: "wall_cams", x: 5.0,  y: 0.1, z: 2.2, angle: 90,  orientation: "P" }
+    - { set_id: "wall_cams", x: 12.9, y: 0.1, z: 2.4, angle: 135, orientation: "L" }
+    - { set_id: "wall_cams", x: 12.9, y: 4.9, z: 2.4, angle: 225, orientation: "L" }
+    - { set_id: "wall_cams", x: 10.1, y: 4.9, z: 2.2, angle: 270, orientation: "P" }
+    - { set_id: "wall_cams", x: 0.1,  y: 2.9, z: 2.2, angle: 315, orientation: "L" }

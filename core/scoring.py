@@ -246,3 +246,12 @@ def count_cameras_3d(px, py, cam_A_list, cam_B_list,
                     count += 0.5
     return count
 
+
+def score_at_point(px, py, cam_A_list, cam_B_list, cfg, state):
+    """
+    Evaluates the exact quality score (including bilateral penalties) 
+    at a single point (px, py).
+    """
+    sample_points = [(px, py, 1.0)]
+    score, _, _, _ = score_configuration(cam_A_list, cam_B_list, sample_points, cfg, state)
+    return score

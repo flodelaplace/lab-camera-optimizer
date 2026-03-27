@@ -8,12 +8,13 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import matplotlib.patches as mpatches
 from matplotlib.patches import Wedge, Rectangle, Polygon
 
 from .room import (obs_poly_vertices, obs_label, obs_centroid, obs_height,
                    cam_d_min, cam_side, point_in_room, point_in_wedge,
                    vertical_body_coverage, cam_fixed_tilt)
-from .scoring import get_fov, count_cameras_3d
+from .scoring import get_fov, count_cameras_3d, score_at_point
 
 
 # =============================================================
@@ -391,6 +392,7 @@ def draw_coverage_bar_chart(ax, cam_A_list, cam_B_list, score, cfg, state):
     _x_max_r = max(c[0] for c in cfg.ROOM_CORNERS)
     x_full = np.arange(_x_min_r, _x_max_r + 0.01, 0.1)
     cov_total, cov_south, cov_north = [], [], []
+    cov_scores = []
 
     for x in x_full:
         tot = 0; s_v = 0.0; n_v = 0.0
@@ -424,17 +426,27 @@ def draw_coverage_bar_chart(ax, cam_A_list, cam_B_list, score, cfg, state):
                         if cam_side(cy, walk_y) == 'S': s_v = max(s_v, v * 0.6)
                         else:                           n_v = max(n_v, v * 0.6)
         cov_total.append(tot); cov_south.append(s_v); cov_north.append(n_v)
+        cov_scores.append(score_at_point(x, walk_y, cam_A_list, cam_B_list, cfg, state))
 
     cov = np.array(cov_total)
+    scores_arr = np.array(cov_scores)
     ax.axvspan(0, walk_x_start, alpha=0.06, color='gray', zorder=1)
     ax.axvspan(walk_x_end, 13.0, alpha=0.06, color='gray', zorder=1)
     ax.axvspan(walk_x_start, walk_x_end, alpha=0.05, color='steelblue', zorder=1)
     ax.axvspan(analysis_x_start, analysis_x_end, alpha=0.09, color='green', zorder=1)
 
+    # Restauration des barres de couleur rouge->jaune->vert
     norm_bar = mcolors.Normalize(vmin=0, vmax=target_coverage + 1)
     for i in range(len(x_full) - 1):
         ax.bar(x_full[i], cov[i], width=0.1,
                color=plt.cm.RdYlGn(norm_bar(cov[i])), align='edge', zorder=2)
+    qty_proxy = mpatches.Patch(facecolor='gray', edgecolor='none', alpha=0.5, label='Quantity (Nb cameras)')
+
+    ax_score = ax.twinx()
+    ax_score.plot(x_full, scores_arr, color="lime", linewidth=2.5, zorder=4, label="Quality Score")
+    ax_score.set_ylabel("Quality Score", color="green", fontsize=9, fontweight="bold")
+    ax_score.tick_params(axis='y', labelcolor="green")
+    ax_score.set_ylim(0, 2.2)  # Échelle standardisée fixée à 2.2
 
     ax.axvline(walk_x_start, color='steelblue', lw=2, ls='-', zorder=5)
     ax.axvline(walk_x_end,   color='steelblue', lw=2, ls='-', zorder=5)
@@ -443,10 +455,12 @@ def draw_coverage_bar_chart(ax, cam_A_list, cam_B_list, score, cfg, state):
     ax.axhline(target_coverage, color='#1a7a1a', lw=2, ls='--', zorder=5,
                label=f"Target {target_coverage} cams")
     ax.axvline(sts_x, color='darkorange', lw=1.5, ls=':', zorder=5, label="STS")
-
-    y_top = max(cov) + 1.5
-    ax.text((walk_x_start + walk_x_end) / 2, y_top * 0.95, "Corridor", ha='center', fontsize=8, color='steelblue', fontweight='bold')
-    ax.text((analysis_x_start + analysis_x_end) / 2, y_top * 0.78, "Analysis zone", ha='center', fontsize=8, color='#1a7a1a', fontweight='bold')
+ 
+    # Calculate total physical cameras to set a fixed Y-axis scale for fair comparison
+    total_cams = len(cam_A_list) + (len(cam_B_list) if cam_B_list else 0)
+    y_max_scale = total_cams + 1.0
+    ax.text((walk_x_start + walk_x_end) / 2, y_max_scale - 0.3, "Corridor", ha='center', fontsize=8, color='steelblue', fontweight='bold')
+    ax.text((analysis_x_start + analysis_x_end) / 2, y_max_scale - 0.7, "Analysis zone", ha='center', fontsize=8, color='#1a7a1a', fontweight='bold')
 
     am6  = (x_full >= analysis_x_start) & (x_full <= analysis_x_end)
     am10 = (x_full >= walk_x_start)     & (x_full <= walk_x_end)
@@ -462,11 +476,14 @@ def draw_coverage_bar_chart(ax, cam_A_list, cam_B_list, score, cfg, state):
     _xs_r = [c[0] for c in cfg.ROOM_CORNERS]
     _x_min_r, _x_max_r = min(_xs_r), max(_xs_r)
     ax.set_xlim(_x_min_r - 0.3, _x_max_r + 0.3)
-    ax.set_ylim(0, max(cov) + 2.2)
+    ax.set_ylim(0, y_max_scale) # Use the fixed scale
     ax.set_xlabel(f"X (m) — room length ({_x_min_r:.0f} → {_x_max_r:.0f}m)", fontsize=9)
     ax.set_ylabel("Nb cameras (≥90% body)", fontsize=9)
     ax.set_title("Coverage along the room — Blue: corridor | Green: analysis zone", fontsize=9, fontweight='bold')
-    ax.legend(loc='upper left', fontsize=7, ncol=2, framealpha=0.9)
+    
+    lines_1, labels_1 = ax.get_legend_handles_labels()
+    lines_2, labels_2 = ax_score.get_legend_handles_labels()
+    ax.legend([qty_proxy] + lines_1 + lines_2, [qty_proxy.get_label()] + labels_1 + labels_2, loc='upper left', fontsize=7, ncol=2, framealpha=0.9)
     ax.grid(True, ls='--', alpha=0.25, axis='y')
     ax.set_xticks(range(int(_x_min_r), int(_x_max_r) + 1))
 
@@ -514,4 +531,3 @@ def visualize_solution(cam_A_list, cam_B_list, score, cfg, state,
         plt.show()
     else:
         plt.close(fig)
-

@@ -60,39 +60,10 @@ if not _args.no_preview:
 # ── Import core modules ───────────────────────────────────────────────────────
 from core.room       import build_wall_segments, wall_normal_at
 from core.candidates import build_sample_points, generate_candidates
-from core.scoring    import score_configuration
 from core.greedy     import greedy_place_cameras
 from core.visualize  import visualize_solution
-
-
-# =============================================================
-# LOGGER
-# =============================================================
-
-class Logger:
-    def __init__(self):
-        self._file = None
-
-    def init(self, path):
-        os.makedirs(os.path.dirname(path), exist_ok=True) if os.path.dirname(path) else None
-        self._file = open(path, 'w', encoding='utf-8')
-        self.log(f"=== CAMERA OPTIMISATION LOG  —  "
-                 f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===")
-        self.log(f"=== Config: {_args.config} ===\n")
-
-    def log(self, msg="", end="\n"):
-        print(msg, end=end)
-        if self._file:
-            self._file.write(msg + end)
-            self._file.flush()
-
-    def close(self):
-        if self._file:
-            self._file.close()
-            self._file = None
-
-LOG = Logger()
-
+from core.scoring    import score_configuration
+from core.reporting  import LOG, print_results
 
 # =============================================================
 # BUILD STATE DICT  (replaces mutated globals)
@@ -116,56 +87,6 @@ def build_state(cfg, walk_y, walk_x_start, walk_x_end,
         "sts_y":            sts_y,
         "wall_segments":    wall_segs,
     }
-
-
-# =============================================================
-# PRINT RESULTS
-# =============================================================
-
-def print_results(cam_A_list, cam_B_list, score, cfg, state):
-    _, _, south_s, north_s = score_configuration(cam_A_list, cam_B_list,
-                                                  build_sample_points(cfg, state),
-                                                  cfg, state)
-    total_s = max(south_s + north_s, 1e-6)
-    bal     = min(south_s, north_s) / max(south_s, north_s, 1e-6)
-
-    cam_A = next(c for c in cfg.camera_sets if c.mounting == "wall")
-    cam_B = next((c for c in cfg.camera_sets if c.mounting == "tripod"), None)
-    walk_y = state["walk_y"]
-    wall_segs = state["wall_segments"]
-
-    LOG.log("\n" + "="*65)
-    LOG.log("  OPTIMAL CONFIGURATION")
-    LOG.log("="*65)
-    LOG.log(f"Score: {score:.2f}")
-    LOG.log(f"Bilateral:  SOUTH={south_s:.1f} ({100*south_s/total_s:.0f}%)  "
-            f"NORTH={north_s:.1f} ({100*north_s/total_s:.0f}%)  "
-            f"balance={bal*100:.0f}% "
-            f"{'OK' if bal > 0.6 else 'UNBALANCED'}\n")
-
-    LOG.log(f"{cam_A.name} cameras:")
-    for i, (x, y, angle, orient, zh) in enumerate(cam_A_list):
-        side      = 'S' if y < walk_y else 'N'
-        d_perp    = max(abs(y - walk_y), 0.3)
-        tilt_deg  = math.degrees(math.atan2(cfg.HUMAN_HEIGHT / 2.0 - zh, d_perp))
-        wall_n    = wall_normal_at(x, y, wall_segs, cfg.ROOM_CORNERS, cfg.ROOM_HEIGHT, cfg.obstacles)
-        pan_deg   = (angle - wall_n + 180) % 360 - 180
-        pan_lbl   = (f"{abs(pan_deg):.0f}deg to the RIGHT" if pan_deg > 1
-                     else f"{abs(pan_deg):.0f}deg to the LEFT" if pan_deg < -1
-                     else "0deg (straight)")
-        LOG.log(f"  A{i+1:2d} [{orient}][{side}]  pos=({x:.2f}m, {y:.2f}m)  h={zh:.1f}m")
-        LOG.log(f"       Pan: {pan_lbl}  |  Tilt: {abs(tilt_deg):.1f}deg downward")
-
-    if cam_B and cam_B_list:
-        LOG.log(f"\n{cam_B.name} cameras:")
-        for i, (x, y, angle, orient, ih) in enumerate(cam_B_list):
-            d_perp   = max(abs(y - walk_y), 0.3)
-            tilt_deg = math.degrees(math.atan2(cfg.HUMAN_HEIGHT / 2.0 - ih, d_perp))
-            LOG.log(f"  B{i+1} [{orient}]  pos=({x:.2f}m, {y:.2f}m)  h={ih:.1f}m  "
-                    f"angle={angle:.0f}deg  tilt={abs(tilt_deg):.1f}deg")
-
-    LOG.log("="*65)
-
 
 # =============================================================
 # MAIN LOOP
@@ -191,6 +112,8 @@ def main():
     os.makedirs(graphs_all_dir,   exist_ok=True)
     os.makedirs(graphs_combo_dir, exist_ok=True)
     LOG.init(log_path)
+    LOG.log(f"=== CAMERA OPTIMISATION LOG  —  {config_name} ===")
+
 
     cam_A = next(c for c in CFG.camera_sets if c.mounting == "wall")
     cam_B = next((c for c in CFG.camera_sets if c.mounting == "tripod"), None)
@@ -478,8 +401,12 @@ def main():
     LOG.log(f"  Total records: {record_counter[0]}")
     LOG.log(f"{'='*65}")
 
+    # Recalculate bilateral scores for the final print
+    _, _, south_s, north_s = score_configuration(global_best_cam_A, global_best_cam_B,
+                                                 build_sample_points(CFG, global_best_state),
+                                                 CFG, global_best_state)
     print_results(global_best_cam_A, global_best_cam_B,
-                  global_best_score, CFG, global_best_state)
+                  global_best_score, (south_s, north_s), CFG, global_best_state)
 
     # ── Final graph ───────────────────────────────────────────────────────
     final_graph = os.path.join(run_dir, f"FINAL_RESULT_score{global_best_score:.0f}.png")
@@ -507,4 +434,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
