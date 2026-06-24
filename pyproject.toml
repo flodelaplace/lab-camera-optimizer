@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lab-camera-optimizer"
-version = "1.0.3"
+version = "1.1.0"
 description = "Automated camera placement optimiser for markerless biomechanics motion capture labs"
 readme = "README.md"
 license = "MIT"
@@ -43,6 +43,7 @@ Documentation = "https://github.com/flodelaplace/lab-camera-optimizer/blob/main/
 lab-camera-optimizer = "optimize:main"
 lab-camera-preview   = "preview_room:main"
 lab-camera-init      = "init_project:main"
+lab-camera-evaluate  = "evaluate:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -53,4 +54,4 @@ include = ["core*", "lab_camera_optimizer*"]
 
 # Include top-level scripts and configs in the source distribution
 [tool.setuptools]
-py-modules = ["optimize", "preview_room", "init_project"]
+py-modules = ["optimize", "preview_room", "init_project", "evaluate"]

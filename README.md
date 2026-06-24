@@ -14,7 +14,8 @@ all evaluation points, with optional bilateral coverage constraints.
 
 - **Any room shape** — define any polygon floor plan (L-shaped, rectangular, etc.)
 - **Obstacles & walls** — pillars, partial-height furniture, irregular wall segments
-- **Multiple camera sets** — wall-mounted cameras + optional tripod cameras
+- **Multiple camera sets** — wall-mounted cameras + tripod cameras, both placed by the same zone-wide optimiser
+- **Camera budget** — fix an exact count per set, *or* give a total and let the optimiser choose the wall/tripod split (`total_cameras` + per-set `count_min`/`count_max`)
 - **Per-camera height variation** — each camera in the same configuration can be at a different height
 - **3D visibility** — checks both horizontal FOV and vertical body coverage (0 → subject height)
 - **Line-of-sight** — occlusion by walls and floor-to-ceiling obstacles
@@ -180,10 +181,23 @@ camera_sets:
     height_options: [2.0, 2.2] # tested heights (metres)
     max_range: 10.0
     min_range: 0.5
-    max_count: 8
+    count_max: 8               # max cameras of this set (alias: max_count)
+    count_min: 0               # min cameras of this set (free mode only)
     min_spacing: 1.2
-    score_weight: 1.0
+    score_weight: 1.0          # weight of this set in the score
+    score_factor: 1.0          # extra per-set multiplier (e.g. 0.5 to down-weight)
     color: "#1f77b4"
+```
+
+#### Camera budget — fixed vs free allocation
+
+```yaml
+optimization:
+  # total_cameras absent → FIXED: each set places exactly its count_max
+  #   (wall-only: tripod count_max 0; "5 wall + 3 tripod": set each count_max)
+  # total_cameras present → FREE: the optimiser splits the total across sets
+  #   within each set's [count_min, count_max] to maximise the score.
+  total_cameras: 8
 ```
 
 #### `capture_zones` — where coverage matters
@@ -239,6 +253,7 @@ optimization:
   bilateral_weight: 0.8        # 0 = disabled, 1 = fully enforced
   vertical_coverage_threshold: 0.9
   restarts_per_combo: 15
+  total_cameras: null          # null = fixed mode; an int = free allocation
   algo: "greedy_1opt"          # greedy | greedy_1opt
   early_stop: 5                # stop after N restarts with no improvement
   graph_mode: "best_per_combo" # all | records_only | best_per_combo
@@ -247,6 +262,10 @@ optimization:
   tripod_grid_step: 0.70
   distance_quality_factor: 0.001
 ```
+
+> **Note:** the `point` (STS) capture zone is **optional**. With no `point` zone
+> declared, cameras simply optimise coverage of the corridor / analysis /
+> polygon zones — useful for tripod-only or pure zone-wide setups.
 
 ### Step 3 — Preview, then run
 

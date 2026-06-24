@@ -5,6 +5,62 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.0] — 2026-06-24 — Unified placement engine, camera budget, performance
+
+### Added
+- **Unified placement engine.** Tripod cameras now go through the *same*
+  zone-wide optimisation as wall cameras (farthest-point diverse init → 1-opt
+  with a coverage-ratio penalty → angle reorientation). The old tripod path,
+  which placed cameras by gating them on a single STS point, is gone — tripods
+  no longer cluster locally and are spread across the capture zone.
+- **Camera budget / free allocation.** New per-set `count_min` / `count_max`
+  (back-compatible alias: `max_count`) plus an optional
+  `optimization.total_cameras`:
+  - no `total_cameras` → **fixed mode**: each set places exactly its `count_max`
+    (legacy behaviour; covers wall-only, tripod-only, and "exactly N wall + M
+    tripod").
+  - `total_cameras: N` → **free mode**: the optimiser allocates `N` cameras
+    across the sets within their `[count_min, count_max]` bounds (marginal greedy
+    over the union of candidate pools + combined 1-opt with type-changing swaps).
+- **Per-set `score_factor`** (default `1.0`): replaces the hard-wired ×0.5
+  tripod down-weighting so free allocation is not biased toward wall cameras.
+- **Auto-optimised STS location** is now a post-placement fine search over the
+  analysis zone, based on the full chosen configuration.
+
+### Changed
+- **STS is fully optional.** With no `point` capture zone, no STS ring is added
+  to the sample grid and no STS marker is drawn — tripod-only / zone-wide configs
+  are no longer polluted by a phantom high-weight point.
+- Tripod candidates now aim at the capture zone (weighted sample-point centroid)
+  instead of a single STS point; `reorient` extended to tripods.
+
+### Performance
+- **Precomputed coverage table** (`scoring.precompute_coverage` /
+  `score_indexed`): per-candidate per-point contributions are computed once per
+  combo and the whole search runs on candidate indices via table aggregation,
+  instead of recomputing cones and line-of-sight on every score evaluation.
+  Verified to match the geometry path exactly (equivalence test).
+- `cam_d_min` memoised; search scores on a subsample of evaluation points
+  (the decisive per-restart score still uses the full set).
+- Net effect on representative cases: ~10-15× faster (a free-mode case went from
+  a >180 s timeout to ~13 s).
+
+### Fixed
+- **Partial-height obstacle occlusion** (`room.has_line_of_sight`): now tests the
+  ray's *minimum* height across the whole footprint crossing (both ends) instead
+  of just the midpoint, so a ray that clears an obstacle mid-span but dips below
+  it at an edge is correctly reported as blocked.
+- `early_stop` now actually triggers (the no-improvement counter was never
+  incremented).
+- Logger no longer crashes on Windows consoles that can't encode unicode.
+
+### Tests
+- Added `tests/` suite (config loader, room geometry/line-of-sight, candidates,
+  scoring) including a `score_indexed` ↔ `score_configuration` equivalence test
+  and partial-occlusion regression tests.
+
+---
+
 ## [1.0.3] — 2026-03-09 — Fix configs bundling in pip wheel
 
 ### Fixed

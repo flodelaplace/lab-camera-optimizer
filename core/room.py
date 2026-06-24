@@ -6,6 +6,7 @@ All functions are pure (no global state) — they receive cfg as argument.
 
 import math
 import numpy as np
+from functools import lru_cache
 
 
 # =============================================================
@@ -159,9 +160,16 @@ def has_line_of_sight(x1, y1, x2, y2,
             if not t_vals:
                 continue
             t_vals = [0.0, t_vals[0]] if t_vals[0] > 0.5 else [t_vals[0], 1.0]
-        t_mid   = (min(t_vals) + max(t_vals)) / 2.0
-        z_at_mid = cam_z + t_mid * (target_z - cam_z)
-        if z_at_mid <= oh:
+        # The ray height varies linearly along its path, so over the span where
+        # it crosses the obstacle footprint [t_lo, t_hi] its MINIMUM height is at
+        # one of the two ends. The ray is occluded iff it is at or below the
+        # obstacle top anywhere over that span — i.e. if the lower of the two end
+        # heights is <= oh. (The old code only checked the midpoint, which missed
+        # rays that clear the obstacle at mid-span but dip below it at an edge.)
+        t_lo, t_hi = min(t_vals), max(t_vals)
+        z_lo = cam_z + t_lo * (target_z - cam_z)
+        z_hi = cam_z + t_hi * (target_z - cam_z)
+        if min(z_lo, z_hi) <= oh:
             return False
     return True
 
@@ -351,11 +359,16 @@ def cone_wall_spill(cam_angle, fov_h, wall_lim):
 # COVERAGE GEOMETRY
 # =============================================================
 
-def cam_d_min(cam_z, fov_v_deg, fixed_tilt_rad,
-              human_height, human_foot_z, human_head_z,
-              v_thresh=0.9, step=0.01, max_search=15.0):
+@lru_cache(maxsize=200000)
+def _cam_d_min_core(cam_z, fov_v_deg, fixed_tilt_rad,
+                    human_height, human_foot_z, human_head_z,
+                    v_thresh, step, max_search):
     """
-    Minimum horizontal distance at which this camera can see v_thresh of the body.
+    Cached core of cam_d_min. cam_d_min does NOT depend on the evaluation point,
+    only on the camera/subject geometry — so the same arguments recur thousands
+    of times during scoring. Memoising collapses the 1500-iteration sweep to a
+    single computation per distinct geometry. Args are pre-rounded by the public
+    wrapper so near-identical floats hit the same cache entry.
     """
     half_fov = math.radians(fov_v_deg / 2.0)
     for d in np.arange(step, max_search, step):
@@ -370,8 +383,27 @@ def cam_d_min(cam_z, fov_v_deg, fixed_tilt_rad,
             continue
         vis = max(0.0, min(angle_head, cone_top) - max(angle_feet, cone_bot))
         if vis / body_span >= v_thresh:
-            return d
+            return float(d)
     return max_search
+
+
+def cam_d_min(cam_z, fov_v_deg, fixed_tilt_rad,
+              human_height, human_foot_z, human_head_z,
+              v_thresh=0.9, step=0.01, max_search=15.0):
+    """
+    Minimum horizontal distance at which this camera can see v_thresh of the body.
+    Thin memoised wrapper — rounds arguments so the cached core is reused across
+    the many (point × camera) calls with identical geometry.
+    """
+    return _cam_d_min_core(
+        round(cam_z, 3),
+        round(fov_v_deg, 2),
+        None if fixed_tilt_rad is None else round(fixed_tilt_rad, 4),
+        round(human_height, 3),
+        round(human_foot_z, 3),
+        round(human_head_z, 3),
+        round(v_thresh, 3),
+        step, max_search)
 
 
 def vertical_body_coverage(cam_x, cam_y, cam_z, pt_x, pt_y, fov_v_deg,

@@ -39,6 +39,11 @@ _parser.add_argument(
     "--no-preview",
     action="store_true",
     help="Skip the room layout preview shown before optimisation starts.")
+_parser.add_argument(
+    "--workers",
+    type=int, default=1,
+    help="Number of parallel workers for combo processing. "
+         "1 = sequential (default), 0 = use all available CPU cores.")
 _args = _parser.parse_args()
 
 CFG = config_loader.load_config(_args.config)
@@ -62,7 +67,7 @@ from core.room       import build_wall_segments, wall_normal_at
 from core.candidates import build_sample_points, generate_candidates
 from core.greedy     import greedy_place_cameras
 from core.visualize  import visualize_solution
-from core.scoring    import score_configuration
+from core.scoring    import score_configuration, find_best_sts_position
 from core.reporting  import LOG, print_results
 
 # =============================================================
@@ -216,9 +221,11 @@ def main():
     global_best_sts      = (CFG.STS_X, CFG.STS_Y)
     global_best_state    = None
     record_counter       = [0]
-    combo_idx            = 0
     combo_best_configs   = {}
 
+    # ── Pre-compute all combo parameters ─────────────────────────────────
+    all_combo_params = []
+    combo_idx = 0
     for corridor_x_start in CORRIDOR_X_STARTS:
         corridor_x_end = corridor_x_start + CORRIDOR_LENGTH
         for zone_offset in ZONE_OFFSETS:
@@ -228,24 +235,12 @@ def main():
               for poly_combo in poly_combos:
                 combo_idx += 1
 
-                # ── Apply polygon translations for this combo ─────────────
-                # Each entry in poly_combo = (zone_id, dx, dy)
-                # We translate the polygon vertices by (dx, dy) for this run.
-                # The original vertices (relative coords) are preserved in z.vertices.
                 poly_label_parts = []
                 for item in poly_combo:
-                    zone_id, dx, dy = item
-                    for z in CFG.capture_zones:
-                        if z.id == zone_id:
-                            z._translated_vertices = [
-                                (vx + dx, vy + dy) for (vx, vy) in z.vertices
-                            ]
-                    poly_label_parts.append(f"{zone_id}_dx{dx:.1f}_dy{dy:.1f}")
+                    zone_id_lbl, dx, dy = item
+                    poly_label_parts.append(f"{zone_id_lbl}_dx{dx:.1f}_dy{dy:.1f}")
                 poly_suffix = ("_P" + "-".join(poly_label_parts)) if poly_label_parts else ""
 
-                # ── Build combo labels ────────────────────────────────────
-                # combo_label      : full human-readable label for logs
-                # combo_label_short: compact label safe for filenames (no path length issues)
                 if _has_corridor:
                     combo_label = (f"C{corridor_x_start:.0f}-{corridor_x_end:.0f}"
                                    f"_Z{zone_start:.0f}-{zone_end:.0f}"
@@ -253,145 +248,255 @@ def main():
                 else:
                     combo_label = f"Y{walk_y:.1f}{poly_suffix}" if poly_suffix else "poly_only"
 
-                # Short label: just the combo index + first offset pair (fits in any path)
                 if poly_combo:
-                    _first = poly_combo[0]   # (zone_id, dx, dy)
+                    _first = poly_combo[0]
                     combo_label_short = f"combo{combo_idx:03d}_dx{_first[1]:.1f}_dy{_first[2]:.1f}"
                 else:
                     combo_label_short = f"combo{combo_idx:03d}"
 
-                # Skip geometrically invalid combos (only meaningful with corridor)
+                # Skip geometrically invalid combos
                 if _has_corridor and zone_end > 8.0 and walk_y > 2.8:
                     LOG.log(f"  [{combo_idx:2d}/{total_combos}]  {combo_label}"
                             f"  — skipped (narrow section)")
                     continue
 
-                LOG.log(f"\n{'─'*60}")
-                LOG.log(f"  COMBO [{combo_idx:2d}/{total_combos}]  {combo_label}")
-                if _has_corridor:
-                    LOG.log(f"  Run-up={zone_offset:.0f}m  |  "
-                            f"Decel={CORRIDOR_LENGTH-ZONE_LENGTH-zone_offset:.0f}m")
-                else:
-                    LOG.log(f"  walk_y (bilateral axis) = {walk_y:.2f}m"
-                            f"  |  X range = [{zone_start:.1f} → {zone_end:.1f}]")
-                LOG.log(f"{'─'*60}")
+                all_combo_params.append({
+                    "combo_idx":        combo_idx,
+                    "combo_label":      combo_label,
+                    "combo_label_short": combo_label_short,
+                    "corridor_x_start": corridor_x_start,
+                    "corridor_x_end":   corridor_x_end,
+                    "zone_offset":      zone_offset,
+                    "zone_start":       zone_start,
+                    "zone_end":         zone_end,
+                    "zone_length":      ZONE_LENGTH,
+                    "walk_y":           walk_y,
+                    "poly_combo":       list(poly_combo),
+                    "has_corridor":     _has_corridor,
+                    "room_cx":          _room_cx,
+                    "room_cy":          _room_cy,
+                    "graphs_all_dir":   graphs_all_dir,
+                    "graphs_combo_dir": graphs_combo_dir,
+                })
 
-                # Build zone state (no globals mutation)
-                if _has_corridor:
-                    sts_x = zone_start + ZONE_LENGTH / 2.0
-                    sts_y = walk_y
-                else:
-                    # ── Polygon-only: derive all zone params from translated vertices ──
-                    #
-                    # walk_y  → centroid Y of the highest-priority zone (intersection)
-                    #           This is the true "axis" for bilateral S/N scoring.
-                    #
-                    # analysis_x_start/end → bounding box X of the full T
-                    #           (used for sample point weighting and STS search range)
-                    #
-                    # corridor_x_start/end → same, wider bounding box
+    # ── Resolve number of workers ─────────────────────────────────────────
+    n_workers = _args.workers
+    if n_workers == 0:
+        n_workers = os.cpu_count() or 1
+    use_parallel = n_workers > 1 and len(all_combo_params) > 1
 
-                    # Highest-priority zone centroid → walk_y and sts position
-                    _best_z = max(
-                        (z for z in CFG.capture_zones if z.type == "polygon"),
-                        key=lambda z: z.priority,
-                        default=None
-                    )
-                    if _best_z is not None:
-                        _verts = getattr(_best_z, "_translated_vertices", None) or _best_z.vertices
-                        sts_x  = sum(v[0] for v in _verts) / len(_verts)
-                        sts_y  = sum(v[1] for v in _verts) / len(_verts)
-                        walk_y = sts_y   # bilateral axis = centre of the priority zone
-                    else:
-                        sts_x  = _room_cx
-                        sts_y  = _room_cy
-                        walk_y = _room_cy
+    if use_parallel:
+        LOG.log(f"\n  Parallel mode: {n_workers} workers for {len(all_combo_params)} combos\n")
 
-                    # Bounding box of ALL translated polygon vertices → analysis range
-                    all_verts = []
-                    for z in CFG.capture_zones:
-                        if z.type == "polygon":
-                            v = getattr(z, "_translated_vertices", None) or z.vertices
-                            all_verts.extend(v)
-                    if all_verts:
-                        corridor_x_start = min(v[0] for v in all_verts)
-                        corridor_x_end   = max(v[0] for v in all_verts)
-                        zone_start       = corridor_x_start
-                        zone_end         = corridor_x_end
-                    else:
-                        corridor_x_start = _room_cx - 1.0
-                        corridor_x_end   = _room_cx + 1.0
-                        zone_start       = corridor_x_start
-                        zone_end         = corridor_x_end
-                state = build_state(CFG, walk_y,
-                                    corridor_x_start, corridor_x_end,
-                                    zone_start, zone_end,
-                                    sts_x, sts_y)
+    # ═════════════════════════════════════════════════════════════════════════
+    # PATH A — PARALLEL EXECUTION
+    # ═════════════════════════════════════════════════════════════════════════
+    if use_parallel:
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        from core.combo_worker import init_worker, process_combo
+        from tqdm import tqdm as _tqdm
 
-                sample_points = build_sample_points(CFG, state)
+        with ProcessPoolExecutor(
+            max_workers=n_workers,
+            initializer=init_worker,
+            initargs=(_args.config,),
+        ) as executor:
+            futures = {
+                executor.submit(process_combo, params): params["combo_idx"]
+                for params in all_combo_params
+            }
 
-                cam_A_cands, cam_B_cands = generate_candidates(
-                    CFG, state,
-                    wall_step        = CFG.WALL_STEP,
-                    angle_steps      = CFG.ANGLE_STEPS,
-                    tripod_grid_step = CFG.TRIPOD_GRID_STEP,
-                    sample_points    = sample_points,
-                )
-                LOG.log(f"  Candidates: {len(cam_A_cands)} cam_A  +  {len(cam_B_cands)} cam_B"
-                        f"  |  Eval points: {len(sample_points)}")
+            pbar = _tqdm(total=len(futures), desc="  Combos", unit="combo",
+                         ncols=90, colour="green")
 
-                def _on_record(attempt, ca, cb, sc, sts_pos, is_rec=False):
-                    record_counter[0] += (1 if is_rec else 0)
-                    record_marker = f"_RECORD{record_counter[0]}" if is_rec else ""
-                    graph_fname = (f"attempt{attempt:02d}_{combo_label_short}"
-                                   f"_score{sc:.0f}{record_marker}.png")
-                    graph_path = os.path.join(graphs_all_dir, graph_fname)
-                    os.makedirs(graphs_all_dir, exist_ok=True)
-                    s = dict(state)
-                    s["sts_x"] = sts_pos[0]; s["sts_y"] = sts_pos[1]
-                    visualize_solution(ca, cb, sc, CFG, s,
-                                       show_window=False, save_path=graph_path)
-                    LOG.log(f"       Graph: {graph_path}")
+            for future in as_completed(futures):
+                result = future.result()
+                cidx        = result["combo_idx"]
+                clabel      = result["combo_label"]
+                clabel_short = result["combo_label_short"]
+                best_cam_A  = result["best_cam_A"]
+                best_cam_B  = result["best_cam_B"]
+                best_score  = result["best_score"]
+                best_sts    = result["best_sts"]
+                r_state     = result["state"]
 
-                best_cam_A, best_cam_B, best_score, best_sts = greedy_place_cameras(
-                    cam_A_cands, cam_B_cands,
-                    sample_points, CFG, state,
-                    n_restarts  = CFG.opt.restarts_per_combo,
-                    combo_label = combo_label,
-                    log         = LOG.log,
-                    on_record   = _on_record,
-                )
+                LOG.log(f"  [{cidx:2d}/{total_combos}]  {clabel}  "
+                        f"score={best_score:.3f}  "
+                        f"({result['n_cam_A_cands']} cands, "
+                        f"{result['n_sample_points']} pts)")
 
-                combo_best_configs[combo_label] = {
+                combo_state = dict(r_state, sts_x=best_sts[0], sts_y=best_sts[1])
+                combo_best_configs[clabel] = {
                     "cam_A":          list(best_cam_A),
                     "cam_B":          list(best_cam_B),
                     "score":          best_score,
                     "sts":            best_sts,
-                    "state":          dict(state, sts_x=best_sts[0], sts_y=best_sts[1]),
-                    "combo_idx":      combo_idx,
+                    "state":          combo_state,
+                    "combo_idx":      cidx,
                 }
-
-                LOG.log(f"\n  -> Score {combo_label}: {best_score:.3f}"
-                        f"  STS=({best_sts[0]:.2f},{best_sts[1]:.2f})", end="")
 
                 if best_score > global_best_score:
                     global_best_score  = best_score
                     global_best_cam_A  = list(best_cam_A)
                     global_best_cam_B  = list(best_cam_B)
                     global_best_sts    = best_sts
-                    global_best_state  = dict(state, sts_x=best_sts[0], sts_y=best_sts[1])
-                    LOG.log("  BEST GLOBAL CONFIG SO FAR")
-                else:
-                    LOG.log("")
+                    global_best_state  = combo_state
 
-                # ── Best-per-combo graph — generated immediately ──────────
-                combo_graph = os.path.join(
-                    graphs_combo_dir,
-                    f"{combo_label_short}_score{best_score:.0f}.png")
-                visualize_solution(best_cam_A, best_cam_B, best_score, CFG,
-                                   dict(state, sts_x=best_sts[0], sts_y=best_sts[1]),
-                                   show_window=False, save_path=combo_graph)
-                LOG.log(f"  Best-per-combo graph: {combo_graph}")
+                pbar.set_postfix({"best": f"{global_best_score:.1f}"})
+                pbar.update(1)
+
+            pbar.close()
+
+        # Generate best-per-combo graphs sequentially (after all combos finish)
+        LOG.log("\n  Generating per-combo graphs...")
+        for clabel, cfg_combo in combo_best_configs.items():
+            short = f"combo{cfg_combo['combo_idx']:03d}"
+            gp = os.path.join(graphs_combo_dir,
+                              f"{short}_score{cfg_combo['score']:.0f}.png")
+            visualize_solution(cfg_combo["cam_A"], cfg_combo["cam_B"],
+                               cfg_combo["score"], CFG, cfg_combo["state"],
+                               show_window=False, save_path=gp)
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # PATH B — SEQUENTIAL EXECUTION  (original behaviour, --workers 1)
+    # ═════════════════════════════════════════════════════════════════════════
+    else:
+      for params in all_combo_params:
+        combo_idx        = params["combo_idx"]
+        combo_label      = params["combo_label"]
+        combo_label_short = params["combo_label_short"]
+        corridor_x_start = params["corridor_x_start"]
+        corridor_x_end   = params["corridor_x_end"]
+        zone_offset      = params["zone_offset"]
+        zone_start       = params["zone_start"]
+        zone_end         = params["zone_end"]
+        walk_y           = params["walk_y"]
+        poly_combo       = params["poly_combo"]
+
+        # ── Apply polygon translations ───────────────────────────────
+        for item in poly_combo:
+            zone_id, dx, dy = item
+            for z in CFG.capture_zones:
+                if z.id == zone_id:
+                    z._translated_vertices = [
+                        (vx + dx, vy + dy) for (vx, vy) in z.vertices
+                    ]
+
+        LOG.log(f"\n{'─'*60}")
+        LOG.log(f"  COMBO [{combo_idx:2d}/{total_combos}]  {combo_label}")
+        if _has_corridor:
+            LOG.log(f"  Run-up={zone_offset:.0f}m  |  "
+                    f"Decel={CORRIDOR_LENGTH-ZONE_LENGTH-zone_offset:.0f}m")
+        else:
+            LOG.log(f"  walk_y (bilateral axis) = {walk_y:.2f}m"
+                    f"  |  X range = [{zone_start:.1f} → {zone_end:.1f}]")
+        LOG.log(f"{'─'*60}")
+
+        # Build zone state
+        if _has_corridor:
+            sts_x = zone_start + ZONE_LENGTH / 2.0
+            sts_y = walk_y
+        else:
+            _best_z = max(
+                (z for z in CFG.capture_zones if z.type == "polygon"),
+                key=lambda z: z.priority,
+                default=None
+            )
+            if _best_z is not None:
+                _verts = getattr(_best_z, "_translated_vertices", None) or _best_z.vertices
+                sts_x  = sum(v[0] for v in _verts) / len(_verts)
+                sts_y  = sum(v[1] for v in _verts) / len(_verts)
+                walk_y = sts_y
+            else:
+                sts_x  = _room_cx
+                sts_y  = _room_cy
+                walk_y = _room_cy
+
+            all_verts = []
+            for z in CFG.capture_zones:
+                if z.type == "polygon":
+                    v = getattr(z, "_translated_vertices", None) or z.vertices
+                    all_verts.extend(v)
+            if all_verts:
+                corridor_x_start = min(v[0] for v in all_verts)
+                corridor_x_end   = max(v[0] for v in all_verts)
+                zone_start       = corridor_x_start
+                zone_end         = corridor_x_end
+            else:
+                corridor_x_start = _room_cx - 1.0
+                corridor_x_end   = _room_cx + 1.0
+                zone_start       = corridor_x_start
+                zone_end         = corridor_x_end
+
+        state = build_state(CFG, walk_y,
+                            corridor_x_start, corridor_x_end,
+                            zone_start, zone_end,
+                            sts_x, sts_y)
+
+        sample_points = build_sample_points(CFG, state)
+
+        cam_A_cands, cam_B_cands = generate_candidates(
+            CFG, state,
+            wall_step        = CFG.WALL_STEP,
+            angle_steps      = CFG.ANGLE_STEPS,
+            tripod_grid_step = CFG.TRIPOD_GRID_STEP,
+            sample_points    = sample_points,
+        )
+        LOG.log(f"  Candidates: {len(cam_A_cands)} cam_A  +  {len(cam_B_cands)} cam_B"
+                f"  |  Eval points: {len(sample_points)}")
+
+        def _on_record(attempt, ca, cb, sc, sts_pos, is_rec=False):
+            record_counter[0] += (1 if is_rec else 0)
+            record_marker = f"_RECORD{record_counter[0]}" if is_rec else ""
+            graph_fname = (f"attempt{attempt:02d}_{combo_label_short}"
+                           f"_score{sc:.0f}{record_marker}.png")
+            graph_path = os.path.join(graphs_all_dir, graph_fname)
+            os.makedirs(graphs_all_dir, exist_ok=True)
+            s = dict(state)
+            s["sts_x"] = sts_pos[0]; s["sts_y"] = sts_pos[1]
+            visualize_solution(ca, cb, sc, CFG, s,
+                               show_window=False, save_path=graph_path)
+            LOG.log(f"       Graph: {graph_path}")
+
+        best_cam_A, best_cam_B, best_score, best_sts = greedy_place_cameras(
+            cam_A_cands, cam_B_cands,
+            sample_points, CFG, state,
+            n_restarts  = CFG.opt.restarts_per_combo,
+            combo_label = combo_label,
+            log         = LOG.log,
+            on_record   = _on_record,
+        )
+
+        combo_best_configs[combo_label] = {
+            "cam_A":          list(best_cam_A),
+            "cam_B":          list(best_cam_B),
+            "score":          best_score,
+            "sts":            best_sts,
+            "state":          dict(state, sts_x=best_sts[0], sts_y=best_sts[1]),
+            "combo_idx":      combo_idx,
+        }
+
+        LOG.log(f"\n  -> Score {combo_label}: {best_score:.3f}"
+                f"  STS=({best_sts[0]:.2f},{best_sts[1]:.2f})", end="")
+
+        if best_score > global_best_score:
+            global_best_score  = best_score
+            global_best_cam_A  = list(best_cam_A)
+            global_best_cam_B  = list(best_cam_B)
+            global_best_sts    = best_sts
+            global_best_state  = dict(state, sts_x=best_sts[0], sts_y=best_sts[1])
+            LOG.log("  BEST GLOBAL CONFIG SO FAR")
+        else:
+            LOG.log("")
+
+        # ── Best-per-combo graph — generated immediately ──────────
+        combo_graph = os.path.join(
+            graphs_combo_dir,
+            f"{combo_label_short}_score{best_score:.0f}.png")
+        visualize_solution(best_cam_A, best_cam_B, best_score, CFG,
+                           dict(state, sts_x=best_sts[0], sts_y=best_sts[1]),
+                           show_window=False, save_path=combo_graph)
+        LOG.log(f"  Best-per-combo graph: {combo_graph}")
 
     # ── Final summary ─────────────────────────────────────────────────────
     LOG.log(f"\n{'='*65}")
@@ -400,6 +505,19 @@ def main():
     LOG.log(f"  STS  : ({global_best_sts[0]:.2f}m, {global_best_sts[1]:.2f}m)")
     LOG.log(f"  Total records: {record_counter[0]}")
     LOG.log(f"{'='*65}")
+
+    # ── Optimise the STS point location (auto_optimize) ───────────────────
+    # For a 'point' zone marked auto_optimize, relocate the STS to the spot best
+    # covered by the final configuration (post-placement fine search).
+    _pt_zone = next((z for z in CFG.capture_zones if z.type == "point"), None)
+    if (_pt_zone is not None and getattr(_pt_zone, "auto_optimize", False)
+            and global_best_state is not None and global_best_cam_A):
+        _new_sts = find_best_sts_position(global_best_cam_A, global_best_cam_B,
+                                          CFG, global_best_state)
+        global_best_sts   = _new_sts
+        global_best_state = dict(global_best_state,
+                                 sts_x=_new_sts[0], sts_y=_new_sts[1])
+        LOG.log(f"  STS optimal location: ({_new_sts[0]:.2f}m, {_new_sts[1]:.2f}m)")
 
     # Recalculate bilateral scores for the final print
     _, _, south_s, north_s = score_configuration(global_best_cam_A, global_best_cam_B,

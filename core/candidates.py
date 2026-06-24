@@ -141,7 +141,10 @@ def build_sample_points(cfg, state):
 
     zone_w = next((z.priority for z in cfg.capture_zones if z.type == "sub_zone"),  1.0)
     corr_w = next((z.priority for z in cfg.capture_zones if z.type == "corridor"),  0.5)
-    sts_w  = next((z.priority for z in cfg.capture_zones if z.type == "point"),     2.0)
+    # STS ring is only added when a 'point' zone is actually declared.
+    # Otherwise (e.g. tripod-only zone-wide configs) it would inject a phantom
+    # high-weight cluster around a meaningless location.
+    point_zone = next((z for z in cfg.capture_zones if z.type == "point"), None)
 
     pts = []
 
@@ -156,12 +159,14 @@ def build_sample_points(cfg, state):
             if point_in_room(x, walk_y, room_corners, obstacles, room_height):
                 pts.append((x, walk_y, corr_w))
 
-    for angle_deg in range(0, 360, 20):
-        for r in [0.2, 0.4, min(0.6, sts_radius)]:
-            px = sts_x + r * math.cos(math.radians(angle_deg))
-            py = sts_y + r * math.sin(math.radians(angle_deg))
-            if point_in_room(px, py, room_corners, obstacles, room_height):
-                pts.append((px, py, sts_w))
+    if point_zone is not None:
+        sts_w = point_zone.priority
+        for angle_deg in range(0, 360, 20):
+            for r in [0.2, 0.4, min(0.6, sts_radius)]:
+                px = sts_x + r * math.cos(math.radians(angle_deg))
+                py = sts_y + r * math.sin(math.radians(angle_deg))
+                if point_in_room(px, py, room_corners, obstacles, room_height):
+                    pts.append((px, py, sts_w))
 
     for zone in cfg.capture_zones:
         if zone.type != "polygon":
@@ -310,7 +315,7 @@ def generate_candidates(cfg, state, wall_step=0.35, angle_steps=24,
                 valid_offsets = [lo + half_ori, hi - half_ori]
             else:
                 valid_offsets = list(np.arange(lo + half_ori,
-                                               hi - half_ori + 0.1, 5.0))
+                                               hi - half_ori + 0.1, 2.0))
                 if not valid_offsets:
                     valid_offsets = [0.0]
 
@@ -387,7 +392,7 @@ def generate_candidates(cfg, state, wall_step=0.35, angle_steps=24,
                 valid_offsets = [lo + half_ori, hi - half_ori]
             else:
                 valid_offsets = list(np.arange(lo + half_ori,
-                                               hi - half_ori + 0.1, 5.0))
+                                               hi - half_ori + 0.1, 2.0))
                 if not valid_offsets:
                     valid_offsets = [0.0]
 
@@ -478,10 +483,16 @@ def generate_candidates(cfg, state, wall_step=0.35, angle_steps=24,
                 _add_wall_cands(x, y, normal_angle, cam_A_cands, seen_A)
 
     # ── Tripod cameras (cam_B) ────────────────────────────────────────────
-    if cam_B and cam_B.max_count > 0:
+    # Tripods are placed freely on an interior grid. Each position generates
+    # candidate angles that actually cover part of the capture zone (aim toward
+    # the zone, NOT toward a single STS point). The optimiser then spreads them
+    # spatially (farthest-point init) and refines angles (reorient pass).
+    if cam_B and cam_B.count_max > 0:
         xs_r = [c[0] for c in room_corners]
         ys_r = [c[1] for c in room_corners]
         walk_margin = cam_B.walk_axis_margin
+        max_r_b     = cam_B.max_range
+        cam_z_b     = max(cam_B.height_options)
 
         for xi in np.arange(min(xs_r)+0.4, max(xs_r), tripod_grid_step):
             for yi in np.arange(min(ys_r)+0.4, max(ys_r), tripod_grid_step):
@@ -489,17 +500,30 @@ def generate_candidates(cfg, state, wall_step=0.35, angle_steps=24,
                     continue
                 if abs(yi - walk_y) < walk_margin:
                     continue
-                if not has_line_of_sight(xi, yi, tgt_x, tgt_y,
+
+                # Zone sample points this position can plausibly reach
+                reachable_b = [(px, py, w) for (px, py, w) in zone_targets_global
+                               if math.sqrt((px-xi)**2 + (py-yi)**2) <= max_r_b]
+                if not reachable_b:
+                    continue
+
+                # LOS to the (weighted) centroid of reachable zone points —
+                # prunes positions fully occluded from the zone.
+                _sw  = sum(w for (_, _, w) in reachable_b) or 1.0
+                cxz  = sum(px*w for (px, py, w) in reachable_b) / _sw
+                cyz  = sum(py*w for (px, py, w) in reachable_b) / _sw
+                if not has_line_of_sight(xi, yi, cxz, cyz,
                                          wall_segs, obstacles, room_height,
-                                         cam_z=max(cam_B.height_options),
+                                         cam_z=cam_z_b,
                                          target_z=human_height / 2.0):
                     continue
-                for a_deg in range(0, 360, 20):
-                    sts_ang   = math.degrees(math.atan2(sts_y - yi, sts_x - xi))
-                    delta_sts = (sts_ang - a_deg + 180) % 360 - 180
-                    for orient in ("L", "P"):
-                        fov_h_b, _ = get_fov(cam_B, orient)
-                        if abs(delta_sts) > (fov_h_b / 2.0 - 10):
+
+                for orient in ("L", "P"):
+                    fov_h_b, _ = get_fov(cam_B, orient)
+                    for a_deg in range(0, 360, 20):
+                        # Keep only angles whose cone actually covers the zone
+                        q = _aim_quality(float(a_deg), fov_h_b, xi, yi, reachable_b)
+                        if q <= 0.0:
                             continue
                         for ih in cam_B.height_options:
                             key = (round(xi, 1), round(yi, 1), a_deg, orient, ih)

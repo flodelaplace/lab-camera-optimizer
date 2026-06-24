@@ -27,6 +27,11 @@ def _min_dist_full_coverage(cam_z, fov_v_deg, human_h, human_fz, human_hz,
                      human_h, human_fz, human_hz, v_thresh=v_thresh)
 
 
+def _has_point_zone(cfg):
+    """True if the config declares a 'point' (STS) capture zone."""
+    return any(z.type == "point" for z in cfg.capture_zones)
+
+
 # =============================================================
 # TOP-DOWN VIEW (cones)
 # =============================================================
@@ -62,11 +67,12 @@ def draw_top_view(ax, cam_A_list, cam_B_list, score, cfg, state):
                             fill=True, facecolor='#d5f5d5', edgecolor='#2ca02c',
                             lw=2, ls='--', zorder=2, alpha=0.6))
     ax.text((analysis_x_start + analysis_x_end) / 2, walk_y + 0.68,
-            "Analysis zone", ha='center', fontsize=8, color='#1a7a1a', fontweight='bold')
-    ax.add_patch(plt.Circle((sts_x, sts_y), sts_radius,
-                             facecolor='#ffe0b2', edgecolor='darkorange', lw=2, zorder=3, alpha=0.8))
-    ax.text(sts_x, sts_y, "STS", ha='center', va='center',
-            fontsize=8, color='darkorange', fontweight='bold')
+            "Analysis zone", ha='center', fontsize=16, color='#1a7a1a', fontweight='bold')
+    if _has_point_zone(cfg):
+        ax.add_patch(plt.Circle((sts_x, sts_y), sts_radius,
+                                 facecolor='#ffe0b2', edgecolor='darkorange', lw=2, zorder=3, alpha=0.8))
+        ax.text(sts_x, sts_y, "STS", ha='center', va='center',
+                fontsize=16, color='darkorange', fontweight='bold')
 
     # ── Polygon capture zones ─────────────────────────────────────────────
     for zone in cfg.capture_zones:
@@ -81,7 +87,7 @@ def draw_top_view(ax, cam_A_list, cam_B_list, score, cfg, state):
         cx_z = sum(v[0] for v in verts) / len(verts)
         cy_z = sum(v[1] for v in verts) / len(verts)
         ax.text(cx_z, cy_z, zone.id, ha='center', va='center',
-                fontsize=7, color='#1a7a1a', fontweight='bold', zorder=3)
+                fontsize=14, color='#1a7a1a', fontweight='bold', zorder=3)
 
     # Obstacles
     for obs in cfg.obstacles:
@@ -93,7 +99,7 @@ def draw_top_view(ax, cam_A_list, cam_B_list, score, cfg, state):
                              edgecolor='black', lw=1.5, zorder=6, alpha=alpha))
         cx_obs, cy_obs = obs_centroid(obs)
         ax.text(cx_obs, cy_obs, obs_label(obs), ha='center', va='center',
-                fontsize=5.5, color='white', fontweight='bold', zorder=7)
+                fontsize=12, color='white', fontweight='bold', zorder=7)
 
     # Cam A cones
     for idx, (cx, cy, angle, orient, zh) in enumerate(cam_A_list):
@@ -129,7 +135,7 @@ def draw_top_view(ax, cam_A_list, cam_B_list, score, cfg, state):
         ax.plot(cx, cy, marker=marker, color=cam_A.color, ms=10,
                 markeredgecolor='white', markeredgewidth=1.0, zorder=7)
         ax.text(cx, cy+0.18, f"A{idx+1}{'P' if orient=='P' else ''}\n{zh:.1f}m",
-                fontsize=5.5, ha='center', color=cam_A.color, fontweight='bold', zorder=8)
+                fontsize=12, ha='center', color=cam_A.color, fontweight='bold', zorder=8)
 
     # Cam B cones
     if cam_B:
@@ -154,16 +160,17 @@ def draw_top_view(ax, cam_A_list, cam_B_list, score, cfg, state):
             ax.plot(cx, cy, marker=marker_b, color=cam_B.color, ms=10,
                     markeredgecolor='white', markeredgewidth=1.0, zorder=7)
             ax.text(cx, cy+0.18, f"B{idx+1}{'P' if orient=='P' else ''}\n{ih:.1f}m",
-                    fontsize=5.5, ha='center', color=cam_B.color, fontweight='bold', zorder=8)
+                    fontsize=12, ha='center', color=cam_B.color, fontweight='bold', zorder=8)
 
     ax.set_aspect('equal')
     _xs = [c[0] for c in cfg.ROOM_CORNERS]; _ys = [c[1] for c in cfg.ROOM_CORNERS]
     _pad = max((max(_xs)-min(_xs)), (max(_ys)-min(_ys))) * 0.08 + 0.5
     ax.set_xlim(min(_xs) - _pad, max(_xs) + _pad)
     ax.set_ylim(min(_ys) - _pad, max(_ys) + _pad)
-    ax.set_xlabel("X (m)", fontsize=9); ax.set_ylabel("Y (m)", fontsize=9)
+    ax.set_xlabel("X (m)", fontsize=18); ax.set_ylabel("Y (m)", fontsize=18)
+    ax.tick_params(axis='both', labelsize=14)
     ax.set_title(f"Top view  —  Score: {score:.1f}  |  bilateral={cfg.BILATERAL_WEIGHT}",
-                 fontsize=9, fontweight='bold')
+                 fontsize=20, fontweight='bold')
     ax.grid(True, ls='--', alpha=0.25, color='gray')
 
 
@@ -243,33 +250,33 @@ def draw_side_view_xz(ax, cam_A_list, cam_B_list, cfg, state):
         ax.add_patch(Rectangle((ox0, 0), ox1-ox0, oh,
                                facecolor='#666666', edgecolor='white', lw=1, zorder=8, alpha=0.75))
         ax.text((ox0+ox1)/2, oh/2, obs_label(obs), ha='center', va='center',
-                fontsize=5, color='white', fontweight='bold', zorder=9,
+                fontsize=12, color='white', fontweight='bold', zorder=9,
                 rotation=90 if (ox1-ox0) < 0.5 else 0)
 
     colors_z = plt.cm.tab20(np.linspace(0, 0.9, max(len(cam_A_list), 1)))
     for idx, (cx, cy, _, orient, zh) in enumerate(cam_A_list):
         ax.plot(cx, zh, 'o', color=colors_z[idx], ms=8, markeredgecolor='white', markeredgewidth=1, zorder=9)
-        ax.text(cx, zh+0.12, f"A{idx+1}\n{zh:.1f}m", ha='center', fontsize=5.5, color=colors_z[idx], fontweight='bold', zorder=10)
+        ax.text(cx, zh+0.12, f"A{idx+1}\n{zh:.1f}m", ha='center', fontsize=12, color=colors_z[idx], fontweight='bold', zorder=10)
     if cam_B:
         for idx, (cx, cy, _, orient, ih) in enumerate(cam_B_list):
             ax.plot(cx, ih, 's', color=cam_B.color, ms=8, markeredgecolor='white', markeredgewidth=1, zorder=9)
-            ax.text(cx, ih+0.12, f"B{idx+1}\n{ih:.1f}m", ha='center', fontsize=5.5, color=cam_B.color, fontweight='bold', zorder=10)
+            ax.text(cx, ih+0.12, f"B{idx+1}\n{ih:.1f}m", ha='center', fontsize=12, color=cam_B.color, fontweight='bold', zorder=10)
 
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax, orientation='vertical', pad=0.01, fraction=0.03,
                         ticks=[i + 0.5 for i in range(0, MAX_CAM + 1)])
     cbar.set_ticklabels([f"{i} cam{'s' if i > 1 else ''}" for i in range(0, MAX_CAM + 1)])
-    cbar.set_label("Nb cameras (≥90% body)", fontsize=8, color='white')
-    cbar.ax.yaxis.set_tick_params(color='white', labelcolor='white', labelsize=7)
+    cbar.set_label("Nb cameras (≥90% body)", fontsize=16, color='white')
+    cbar.ax.yaxis.set_tick_params(color='white', labelcolor='white', labelsize=14)
     for y in range(1, MAX_CAM + 1):
         cbar.ax.axhline(y, color='white', lw=0.5, alpha=0.6)
 
     _xs_r = [c[0] for c in cfg.ROOM_CORNERS]
     ax.set_xlim(min(_xs_r) - 0.2, max(_xs_r) + 0.2); ax.set_ylim(-0.25, room_h + 0.25)
-    ax.set_xlabel("X (m)", fontsize=9, color='white'); ax.set_ylabel("Z (m) height", fontsize=9, color='white')
-    ax.tick_params(colors='white')
-    ax.set_title("XZ side view — cameras seeing each height point (≥90% body)", fontsize=9, fontweight='bold', color='white')
+    ax.set_xlabel("X (m)", fontsize=18, color='white'); ax.set_ylabel("Z (m) height", fontsize=18, color='white')
+    ax.tick_params(colors='white', labelsize=14)
+    ax.set_title("XZ side view — cameras seeing each height point (≥90% body)", fontsize=20, fontweight='bold', color='white')
     ax.set_facecolor('#1a1a2e')
     for spine in ax.spines.values(): spine.set_edgecolor('white')
     ax.grid(False)
@@ -314,9 +321,10 @@ def draw_top_heatmap(ax, cam_A_list, cam_B_list, cfg, state):
     ax.add_patch(Rectangle((analysis_x_start, walk_y - 0.5),
                             analysis_x_end - analysis_x_start, 1.0,
                             fill=False, edgecolor='#55efc4', lw=2, ls='--', zorder=9))
-    ax.add_patch(plt.Circle((sts_x, sts_y), cfg.STS_RADIUS,
-                             facecolor='none', edgecolor='#fdcb6e', lw=2, zorder=9))
-    ax.text(sts_x, sts_y, "STS", ha='center', va='center', fontsize=7, color='#fdcb6e', fontweight='bold', zorder=10)
+    if _has_point_zone(cfg):
+        ax.add_patch(plt.Circle((sts_x, sts_y), cfg.STS_RADIUS,
+                                 facecolor='none', edgecolor='#fdcb6e', lw=2, zorder=9))
+        ax.text(sts_x, sts_y, "STS", ha='center', va='center', fontsize=16, color='#fdcb6e', fontweight='bold', zorder=10)
 
     # ── Polygon capture zones ─────────────────────────────────────────────
     for zone in cfg.capture_zones:
@@ -331,41 +339,41 @@ def draw_top_heatmap(ax, cam_A_list, cam_B_list, cfg, state):
         cx_z = sum(v[0] for v in verts) / len(verts)
         cy_z = sum(v[1] for v in verts) / len(verts)
         ax.text(cx_z, cy_z, zone.id, ha='center', va='center',
-                fontsize=6, color='#55efc4', fontweight='bold', zorder=10)
+                fontsize=14, color='#55efc4', fontweight='bold', zorder=10)
 
     for obs in cfg.obstacles:
         verts = obs_poly_vertices(obs)
         ax.add_patch(Polygon(verts, closed=True, facecolor='#444444', edgecolor='white', lw=1.2, zorder=10, alpha=0.9))
         cx_obs, cy_obs = obs_centroid(obs)
-        ax.text(cx_obs, cy_obs, obs_label(obs), ha='center', va='center', fontsize=5, color='white', fontweight='bold', zorder=11)
+        ax.text(cx_obs, cy_obs, obs_label(obs), ha='center', va='center', fontsize=12, color='white', fontweight='bold', zorder=11)
 
     cam_A = next(c for c in cfg.camera_sets if c.mounting == "wall")
     cam_B = next((c for c in cfg.camera_sets if c.mounting == "tripod"), None)
     colors_z = plt.cm.tab20(np.linspace(0, 0.9, max(len(cam_A_list), 1)))
     for idx, (cx, cy, angle, orient, zh) in enumerate(cam_A_list):
         ax.plot(cx, cy, 'o', color=colors_z[idx], ms=9, markeredgecolor='white', markeredgewidth=1.2, zorder=11)
-        ax.text(cx, cy+0.15, f"A{idx+1}\n{zh:.1f}m", ha='center', fontsize=5.5, color=colors_z[idx], fontweight='bold', zorder=12)
+        ax.text(cx, cy+0.15, f"A{idx+1}\n{zh:.1f}m", ha='center', fontsize=12, color=colors_z[idx], fontweight='bold', zorder=12)
     if cam_B:
         for idx, (cx, cy, angle, orient, ih) in enumerate(cam_B_list):
             ax.plot(cx, cy, 's', color=cam_B.color, ms=9, markeredgecolor='white', markeredgewidth=1.2, zorder=11)
-            ax.text(cx, cy+0.15, f"B{idx+1}\n{ih:.1f}m", ha='center', fontsize=5.5, color=cam_B.color, fontweight='bold', zorder=12)
+            ax.text(cx, cy+0.15, f"B{idx+1}\n{ih:.1f}m", ha='center', fontsize=12, color=cam_B.color, fontweight='bold', zorder=12)
 
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm); sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax, orientation='vertical', pad=0.01, fraction=0.03,
                         ticks=[i + 0.5 for i in range(0, MAX_CAM + 1)])
     cbar.set_ticklabels([f"{i} cam{'s' if i > 1 else ''}" for i in range(0, MAX_CAM + 1)])
-    cbar.set_label("Nb cameras (≥90% body)", fontsize=8, color='white')
-    cbar.ax.yaxis.set_tick_params(color='white', labelcolor='white', labelsize=7)
+    cbar.set_label("Nb cameras (≥90% body)", fontsize=16, color='white')
+    cbar.ax.yaxis.set_tick_params(color='white', labelcolor='white', labelsize=14)
     for y in range(1, MAX_CAM + 1): cbar.ax.axhline(y, color='white', lw=0.5, alpha=0.6)
 
     ax.set_aspect('equal')
     _xs_r = [c[0] for c in cfg.ROOM_CORNERS]; _ys_r = [c[1] for c in cfg.ROOM_CORNERS]
     ax.set_xlim(min(_xs_r) - 0.5, max(_xs_r) + 0.5)
     ax.set_ylim(min(_ys_r) - 0.5, max(_ys_r) + 0.5)
-    ax.set_xlabel("X (m)", fontsize=9, color='white'); ax.set_ylabel("Y (m)", fontsize=9, color='white')
-    ax.tick_params(colors='white')
+    ax.set_xlabel("X (m)", fontsize=18, color='white'); ax.set_ylabel("Y (m)", fontsize=18, color='white')
+    ax.tick_params(colors='white', labelsize=14)
     for spine in ax.spines.values(): spine.set_edgecolor('white')
-    ax.set_title("XY heatmap — 3D coverage (≥90% body)", fontsize=9, fontweight='bold', color='white')
+    ax.set_title("XY heatmap — 3D coverage (≥90% body)", fontsize=20, fontweight='bold', color='white')
     ax.grid(False)
 
 
@@ -444,8 +452,8 @@ def draw_coverage_bar_chart(ax, cam_A_list, cam_B_list, score, cfg, state):
 
     ax_score = ax.twinx()
     ax_score.plot(x_full, scores_arr, color="lime", linewidth=2.5, zorder=4, label="Quality Score")
-    ax_score.set_ylabel("Quality Score", color="green", fontsize=9, fontweight="bold")
-    ax_score.tick_params(axis='y', labelcolor="green")
+    ax_score.set_ylabel("Quality Score", color="green", fontsize=18, fontweight="bold")
+    ax_score.tick_params(axis='y', labelcolor="green", labelsize=14)
     ax_score.set_ylim(0, 2.2)  # Échelle standardisée fixée à 2.2
 
     ax.axvline(walk_x_start, color='steelblue', lw=2, ls='-', zorder=5)
@@ -459,8 +467,8 @@ def draw_coverage_bar_chart(ax, cam_A_list, cam_B_list, score, cfg, state):
     # Calculate total physical cameras to set a fixed Y-axis scale for fair comparison
     total_cams = len(cam_A_list) + (len(cam_B_list) if cam_B_list else 0)
     y_max_scale = total_cams + 1.0
-    ax.text((walk_x_start + walk_x_end) / 2, y_max_scale - 0.3, "Corridor", ha='center', fontsize=8, color='steelblue', fontweight='bold')
-    ax.text((analysis_x_start + analysis_x_end) / 2, y_max_scale - 0.7, "Analysis zone", ha='center', fontsize=8, color='#1a7a1a', fontweight='bold')
+    ax.text((walk_x_start + walk_x_end) / 2, y_max_scale - 0.3, "Corridor", ha='center', fontsize=16, color='steelblue', fontweight='bold')
+    ax.text((analysis_x_start + analysis_x_end) / 2, y_max_scale - 0.7, "Analysis zone", ha='center', fontsize=16, color='#1a7a1a', fontweight='bold')
 
     am6  = (x_full >= analysis_x_start) & (x_full <= analysis_x_end)
     am10 = (x_full >= walk_x_start)     & (x_full <= walk_x_end)
@@ -470,20 +478,21 @@ def draw_coverage_bar_chart(ax, cam_A_list, cam_B_list, score, cfg, state):
     stats = (f"Zone: >={target_coverage} cams = {100*np.mean(cov[am6]>=target_coverage):.0f}%  | Bilateral = {bk6:.0f}%\n"
              f"Corridor: >={target_coverage} cams = {100*np.mean(cov[am10]>=target_coverage):.0f}%  | Bilateral = {bk10:.0f}%\n"
              f"Score: {score:.2f}")
-    ax.text(0.99, 0.99, stats, transform=ax.transAxes, fontsize=8, va='top', ha='right',
+    ax.text(0.99, 0.99, stats, transform=ax.transAxes, fontsize=14, va='top', ha='right',
             bbox=dict(boxstyle='round', facecolor='white', edgecolor='gray', alpha=0.92))
 
     _xs_r = [c[0] for c in cfg.ROOM_CORNERS]
     _x_min_r, _x_max_r = min(_xs_r), max(_xs_r)
     ax.set_xlim(_x_min_r - 0.3, _x_max_r + 0.3)
     ax.set_ylim(0, y_max_scale) # Use the fixed scale
-    ax.set_xlabel(f"X (m) — room length ({_x_min_r:.0f} → {_x_max_r:.0f}m)", fontsize=9)
-    ax.set_ylabel("Nb cameras (≥90% body)", fontsize=9)
-    ax.set_title("Coverage along the room — Blue: corridor | Green: analysis zone", fontsize=9, fontweight='bold')
+    ax.set_xlabel(f"X (m) — room length ({_x_min_r:.0f} → {_x_max_r:.0f}m)", fontsize=18)
+    ax.set_ylabel("Nb cameras (≥90% body)", fontsize=18)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.set_title("Coverage along the room — Blue: corridor | Green: analysis zone", fontsize=20, fontweight='bold')
     
     lines_1, labels_1 = ax.get_legend_handles_labels()
     lines_2, labels_2 = ax_score.get_legend_handles_labels()
-    ax.legend([qty_proxy] + lines_1 + lines_2, [qty_proxy.get_label()] + labels_1 + labels_2, loc='upper left', fontsize=7, ncol=2, framealpha=0.9)
+    ax.legend([qty_proxy] + lines_1 + lines_2, [qty_proxy.get_label()] + labels_1 + labels_2, loc='upper left', fontsize=14, ncol=2, framealpha=0.9)
     ax.grid(True, ls='--', alpha=0.25, axis='y')
     ax.set_xticks(range(int(_x_min_r), int(_x_max_r) + 1))
 
@@ -510,18 +519,24 @@ def visualize_solution(cam_A_list, cam_B_list, score, cfg, state,
     draw_side_view_xz(ax_side,   cam_A_list, cam_B_list, cfg, state)
     draw_coverage_bar_chart(ax_bar, cam_A_list, cam_B_list, score, cfg, state)
 
-    cam_A = next(c for c in cfg.camera_sets if c.mounting == "wall")
     walk_y = state["walk_y"]
-    n_S = sum(1 for c in cam_A_list if c[1] < walk_y)
-    n_N = sum(1 for c in cam_A_list if c[1] >= walk_y)
-    n_L = sum(1 for c in cam_A_list if c[3] == 'L')
-    n_P = sum(1 for c in cam_A_list if c[3] == 'P')
+    all_cams = list(cam_A_list) + list(cam_B_list)
+    n_S = sum(1 for c in all_cams if c[1] < walk_y)
+    n_N = sum(1 for c in all_cams if c[1] >= walk_y)
+    n_L = sum(1 for c in all_cams if c[3] == 'L')
+    n_P = sum(1 for c in all_cams if c[3] == 'P')
+    parts = []
+    if cam_A_list:
+        parts.append(f"{len(cam_A_list)} wall")
+    if cam_B_list:
+        parts.append(f"{len(cam_B_list)} tripod")
+    cam_summary = " + ".join(parts) if parts else "no cameras"
     fig.suptitle(
         f"Camera optimisation — Markerless Biomechanics Lab\n"
-        f"{cam_A.name}: {n_S} SOUTH + {n_N} NORTH  |  "
+        f"{cam_summary}  |  {n_S} SOUTH + {n_N} NORTH  |  "
         f"{n_L}× Landscape + {n_P}× Portrait  |  "
         f"bilateral={cfg.BILATERAL_WEIGHT}",
-        fontsize=12, fontweight='bold')
+        fontsize=26, fontweight='bold')
 
     out_path = save_path if save_path else "optimisation_cameras_resultat.png"
     if out_path and __import__('os').path.dirname(out_path):

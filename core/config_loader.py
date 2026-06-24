@@ -10,6 +10,7 @@ of the Config object returned by load_config().
 import yaml
 import os
 import math
+import warnings
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -90,6 +91,15 @@ def load_config(yaml_path: str) -> "_Ns":
     # ── Camera sets ───────────────────────────────────────────────────────
     cfg.camera_sets = []
     for cs in raw.get("camera_sets", []):
+        # Camera count budget:
+        #   count_max — maximum cameras of this set (back-compat alias: max_count)
+        #   count_min — minimum cameras of this set (used in free-allocation mode)
+        # In FIXED mode (no optimization.total_cameras) the set places exactly
+        # count_max cameras (legacy behaviour). In FREE mode the optimiser
+        # allocates between sets within [count_min, count_max].
+        count_max = int(cs.get("count_max", cs.get("max_count", 10)))
+        count_min = int(cs.get("count_min", 0))
+
         cam = _Ns(
             id           = cs["id"],
             name         = cs.get("name", cs["id"]),
@@ -105,16 +115,23 @@ def load_config(yaml_path: str) -> "_Ns":
             min_range  = float(cs.get("min_range",  0.5)),
 
             height_options = [float(h) for h in cs.get("height_options", [2.0])],
-            max_count      = int(cs.get("max_count", 10)),
+            count_max      = count_max,
+            count_min      = count_min,
+            max_count      = count_max,           # legacy alias (== count_max)
             min_spacing    = float(cs.get("min_spacing", 1.5)),
 
             score_weight     = float(cs.get("score_weight", 1.0)),
+            # Per-set score factor. Default 1.0 (fair). Historically tripods were
+            # down-weighted to 0.5 as an auxiliary system — set score_factor: 0.5
+            # explicitly to restore that. Kept fair by default so free-allocation
+            # mode does not artificially favour wall cameras.
+            score_factor     = float(cs.get("score_factor", 1.0)),
             walk_axis_margin = float(cs.get("walk_axis_margin", 0.0)),
 
             color = str(cs.get("color", "#1f77b4")),
         )
         # Derived: is this set effectively disabled?
-        cam.enabled = (not cam.optional) or (cam.max_count > 0)
+        cam.enabled = (not cam.optional) or (cam.count_max > 0)
         cfg.camera_sets.append(cam)
 
     # ── Capture zones ─────────────────────────────────────────────────────
@@ -166,11 +183,22 @@ def load_config(yaml_path: str) -> "_Ns":
         wall_step                    = float(opt.get("wall_step", 0.35)),
         angle_steps                  = int(opt.get("angle_steps", 24)),
         tripod_grid_step             = float(opt.get("tripod_grid_step", 0.70)),
-        distance_quality_factor      = float(opt.get("distance_quality_factor", 0.01)),
+        distance_quality_factor      = float(opt.get("distance_quality_factor", 0.03)),
+        tripod_score_factor          = float(opt.get("tripod_score_factor", 0.5)),
         graph_mode                   = str(opt.get("graph_mode", "records_only")),
         algo                         = str(opt.get("algo", "greedy_1opt")),
         early_stop                   = int(opt.get("early_stop", 0)),  # 0 = auto (n_restarts//3)
+        # Free-allocation budget: total cameras to place across all sets.
+        # None → FIXED mode (each set places exactly its count_max).
+        # int  → FREE mode (allocate the total between sets within their bounds).
+        total_cameras                = (int(opt["total_cameras"])
+                                        if opt.get("total_cameras") is not None
+                                        else None),
     )
+
+    # FREE mode flag — the optimiser decides the wall/tripod split.
+    cfg.FREE_MODE     = cfg.opt.total_cameras is not None
+    cfg.TOTAL_CAMERAS = cfg.opt.total_cameras
 
     # ── Convenience shortcuts (mirrors old global constants) ──────────────
     # These allow the main script to reference cfg.ROOM_CORNERS etc.
@@ -281,7 +309,151 @@ def load_config(yaml_path: str) -> "_Ns":
     cfg.TRIPOD_GRID_STEP = cfg.opt.tripod_grid_step
     cfg.DIST_QUALITY_K   = cfg.opt.distance_quality_factor
 
+    validate_config(cfg)
     return cfg
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Configuration validation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _point_in_polygon_check(x, y, verts):
+    """Ray-casting point-in-polygon (local copy to avoid circular import)."""
+    n = len(verts); inside = False; j = n - 1
+    for i in range(n):
+        xi, yi = verts[i]; xj, yj = verts[j]
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def validate_config(cfg):
+    """
+    Validates a loaded configuration for common errors and inconsistencies.
+
+    Raises ValueError for fatal errors.
+    Issues warnings for non-fatal but suspicious settings.
+    """
+    errors = []
+    warns = []
+
+    # ── 1. Room geometry ──────────────────────────────────────────────────
+    if len(cfg.room.corners) < 3:
+        errors.append("Room must have at least 3 corners.")
+    if cfg.room.height <= 0:
+        errors.append(f"Room height must be positive, got {cfg.room.height}.")
+
+    # ── 2. Subject ────────────────────────────────────────────────────────
+    if cfg.subject.height <= 0:
+        errors.append(f"Subject height must be positive, got {cfg.subject.height}.")
+    if cfg.subject.height >= cfg.room.height:
+        warns.append(f"Subject height ({cfg.subject.height}m) >= room height "
+                     f"({cfg.room.height}m).")
+    if cfg.subject.foot_z < 0:
+        warns.append(f"Subject foot_z ({cfg.subject.foot_z}m) is negative.")
+
+    # ── 3. Camera sets ────────────────────────────────────────────────────
+    room_corners = cfg.room.corners
+    for cam in cfg.camera_sets:
+        cid = cam.id
+        for h in cam.height_options:
+            if h >= cfg.room.height:
+                warns.append(f"Camera '{cid}' height {h}m >= room height "
+                             f"{cfg.room.height}m.")
+            if h <= 0:
+                errors.append(f"Camera '{cid}' height {h}m must be positive.")
+        if cam.max_range <= cam.min_range:
+            errors.append(f"Camera '{cid}': max_range ({cam.max_range}) must be "
+                          f"> min_range ({cam.min_range}).")
+        if cam.fov_h_L <= 0 or cam.fov_h_L >= 360:
+            errors.append(f"Camera '{cid}': fov_h_landscape ({cam.fov_h_L}) "
+                          f"must be in (0, 360).")
+        if cam.fov_v_L <= 0 or cam.fov_v_L >= 360:
+            errors.append(f"Camera '{cid}': fov_v_landscape ({cam.fov_v_L}) "
+                          f"must be in (0, 360).")
+        if cam.count_max < 0:
+            errors.append(f"Camera '{cid}': count_max ({cam.count_max}) "
+                          f"must be >= 0.")
+        if cam.count_min < 0:
+            errors.append(f"Camera '{cid}': count_min ({cam.count_min}) "
+                          f"must be >= 0.")
+        if cam.count_min > cam.count_max:
+            errors.append(f"Camera '{cid}': count_min ({cam.count_min}) "
+                          f"must be <= count_max ({cam.count_max}).")
+
+    # ── 4. Obstacles inside room ──────────────────────────────────────────
+    for i, obs in enumerate(cfg.obstacles):
+        verts = obs.get("vertices", [])
+        label = obs.get("label", f"obstacle #{i+1}")
+        for vx, vy in verts:
+            if not _point_in_polygon_check(vx, vy, room_corners):
+                warns.append(f"Obstacle '{label}' vertex ({vx}, {vy}) is "
+                             f"outside the room polygon.")
+                break
+
+    # ── 5. Capture zones ──────────────────────────────────────────────────
+    for zone in cfg.capture_zones:
+        if zone.type == "corridor":
+            for x_start in zone.x_start_options:
+                x_end = x_start + zone.length
+                for y in zone.y_options:
+                    if not _point_in_polygon_check(x_start, y, room_corners):
+                        warns.append(f"Zone '{zone.id}': corridor start "
+                                     f"({x_start}, {y}) is outside the room.")
+                    if not _point_in_polygon_check(x_end, y, room_corners):
+                        warns.append(f"Zone '{zone.id}': corridor end "
+                                     f"({x_end}, {y}) is outside the room.")
+        elif zone.type == "polygon" and zone.vertices:
+            for dx in zone.x_offsets:
+                for dy in zone.y_offsets:
+                    translated = [(vx + dx, vy + dy) for vx, vy in zone.vertices]
+                    outside = [v for v in translated
+                               if not _point_in_polygon_check(v[0], v[1],
+                                                              room_corners)]
+                    if outside:
+                        warns.append(
+                            f"Zone '{zone.id}' at offset ({dx},{dy}): "
+                            f"{len(outside)}/{len(translated)} vertices "
+                            f"outside the room.")
+                        break
+
+    # ── 6. Optimisation parameters ────────────────────────────────────────
+    if cfg.opt.bilateral_weight < 0 or cfg.opt.bilateral_weight > 1:
+        errors.append(f"bilateral_weight ({cfg.opt.bilateral_weight}) "
+                      f"must be in [0, 1].")
+    if cfg.opt.target_coverage <= 0:
+        errors.append(f"target_coverage ({cfg.opt.target_coverage}) "
+                      f"must be positive.")
+    vct = cfg.opt.vertical_coverage_threshold
+    if vct <= 0 or vct > 1:
+        errors.append(f"vertical_coverage_threshold ({vct}) must be in (0, 1].")
+    if cfg.opt.restarts_per_combo <= 0:
+        errors.append(f"restarts_per_combo ({cfg.opt.restarts_per_combo}) "
+                      f"must be positive.")
+
+    # ── 7. Camera budget (free-allocation mode) ──────────────────────────
+    if cfg.opt.total_cameras is not None:
+        sum_min = sum(c.count_min for c in cfg.camera_sets)
+        sum_max = sum(c.count_max for c in cfg.camera_sets)
+        tc = cfg.opt.total_cameras
+        if tc <= 0:
+            errors.append(f"total_cameras ({tc}) must be positive.")
+        if tc < sum_min:
+            errors.append(f"total_cameras ({tc}) is less than the sum of all "
+                          f"count_min ({sum_min}) — cannot satisfy minimums.")
+        if tc > sum_max:
+            errors.append(f"total_cameras ({tc}) exceeds the sum of all "
+                          f"count_max ({sum_max}) — not enough candidate slots.")
+
+    # ── Issue warnings ────────────────────────────────────────────────────
+    for w in warns:
+        warnings.warn(f"[Config] {w}", stacklevel=3)
+
+    # ── Raise for fatal errors ────────────────────────────────────────────
+    if errors:
+        msg = "Configuration errors:\n" + "\n".join(f"  - {e}" for e in errors)
+        raise ValueError(msg)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

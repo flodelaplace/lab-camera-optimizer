@@ -223,6 +223,16 @@ line-of-sight to the target point.
 
 ## 5. Optimisation algorithm
 
+**Unified engine.** Every enabled camera set — wall *and* tripod — is placed by
+the **same** routine (diverse init → 1-opt → reorient). Tripods are no longer a
+special "auxiliary" system gated on a single STS point; they are spread across
+the capture zone exactly like wall cameras. The only per-type differences live
+in the scoring (tripods can contribute to both bilateral sides, and each set has
+its own `score_factor`).
+
+For two camera sets the optimiser runs **block-coordinate**: it places the wall
+set first, then the tripod set given the walls (each then angle-refined).
+
 ### 5.1 Pure greedy (`greedy`)
 
 The simplest algorithm. Cameras are added **one at a time**:
@@ -297,6 +307,38 @@ consecutive restarts, the combo is terminated early.
 early_stop: 5   # stop after 5 restarts with no improvement
                 # 0 = auto (n_restarts // 3)
 ```
+
+### 5.6 Camera budget — fixed vs free allocation
+
+How many cameras of each set are placed is controlled by per-set
+`count_min` / `count_max` (alias `max_count`) and an optional
+`optimization.total_cameras`:
+
+- **Fixed mode** (`total_cameras` absent): each set places exactly its
+  `count_max`. This covers wall-only (tripod `count_max: 0`), tripod-only, and
+  "exactly N wall + M tripod".
+- **Free mode** (`total_cameras: N`): the optimiser allocates `N` cameras across
+  the sets within each set's `[count_min, count_max]`. Allocation is a **marginal
+  greedy over the union** of all candidate pools — at each step it adds the
+  camera (of any set) that most improves the score — followed by a **combined
+  1-opt** whose replacements may change a camera's set/type. Minimums are filled
+  first. The total placed is exactly `N`.
+
+`score_factor` (per set, default `1.0`) is a multiplier on a set's per-camera
+score. It defaults to fair (`1.0`) so free allocation is not biased toward one
+set; set it `< 1.0` to down-weight an auxiliary set.
+
+### 5.7 Performance — precomputed coverage
+
+Within a combo the candidate set and the sample points are fixed, so each
+candidate's per-point contribution (in-cone + line-of-sight + vertical coverage)
+is **identical** every time it is scored. It is therefore computed **once**
+(`precompute_coverage`) and the whole search runs on candidate *indices* with
+table aggregation (`score_indexed`) — which is verified to match the geometry
+scorer exactly. Only the angle-reorientation pass (off-grid angles) and the
+decisive per-restart score (on the full point set) use the geometry path.
+Together with memoised `cam_d_min` and search-time point subsampling this makes
+the search roughly an order of magnitude faster.
 
 ---
 
@@ -409,11 +451,13 @@ rather than splitting equally between both.
 | `fov_h_landscape / fov_v_landscape` | Horizontal and vertical FOV in landscape orientation. |
 | `fov_h_portrait / fov_v_portrait` | FOV in portrait orientation (camera rotated 90°). |
 | `height_options` | List of mounting heights to test. Each height is a separate candidate. More values = more candidates = slower. |
-| `max_count` | Maximum cameras in the final solution. |
+| `count_max` (`max_count`) | Maximum cameras of this set. In fixed mode, the exact number placed. |
+| `count_min` | Minimum cameras of this set (free mode only). |
 | `min_spacing` | Minimum distance between two cameras of the same set (metres). Prevents trivial clustering. |
 | `max_range` | Maximum useful range of the camera. Points beyond this distance are not seen. |
 | `min_range` | Minimum range (blind zone directly in front). |
 | `score_weight` | Multiplier on `score_v` for this camera set. Use to prioritise one set over another. |
+| `score_factor` | Extra per-set multiplier (default `1.0`). Set `< 1.0` to down-weight an auxiliary set. |
 
 ### Capture zones
 
@@ -430,6 +474,7 @@ rather than splitting equally between both.
 
 | YAML key | Default | Effect |
 |---|---|---|
+| `total_cameras` | `null` | `null` → fixed mode (each set places its `count_max`). An int → free mode: allocate this many cameras across sets within their `[count_min, count_max]`. |
 | `target_coverage` | `4` | Target number of cameras per point. Score saturates above this. Typically 3–6 for biomechanics. |
 | `bilateral_weight` | `0.8` | Weight of the bilateral constraint. `0` = disabled, `1` = fully enforced. |
 | `vertical_coverage_threshold` | `0.9` | Minimum fraction of body height a camera must see to count. `0.9` = must see at least 90% of the body. |

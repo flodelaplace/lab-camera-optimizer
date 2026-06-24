@@ -19,7 +19,13 @@ class Logger:
                  f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===")
 
     def log(self, msg="", end="\n"):
-        print(msg, end=end)
+        # Be robust to consoles that can't encode unicode (e.g. Windows cp1252):
+        # never let a print() encoding error abort an optimisation run.
+        try:
+            print(msg, end=end)
+        except UnicodeEncodeError:
+            enc = getattr(__import__("sys").stdout, "encoding", None) or "utf-8"
+            print(msg.encode(enc, "replace").decode(enc, "replace"), end=end)
         if self._file:
             self._file.write(msg + end)
             self._file.flush()
