@@ -5,6 +5,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.1] — 2026-06-27 — Consensus analysis, STS fine search, plot fix
+
+### Added
+- **Consensus / robustness analysis** (`core/consensus.py`, opt-in via
+  `optimization.consensus_topk`). Keeps the top-K scoring configs of the
+  **winning zone** and reports:
+  - the score spread (is the result really a tie?),
+  - per-camera **position stability** (fraction of good configs that agree) and
+    **aim-angle agreement** (circular spread of the viewing direction),
+  - the **medoid** (most representative) configuration.
+  Outputs `CONSENSUS.png` — camera-position density + the medoid config with an
+  **aim arrow**, sensor orientation (Portrait/Landscape), mount height and
+  **downward tilt** per camera — plus `consensus_topk.json` for offline
+  re-analysis without re-running.
+- **Auto-optimised STS location** restored as a post-placement fine search over
+  the analysis zone, based on the full chosen configuration
+  (`scoring.find_best_sts_position`).
+
+### Changed
+- The consensus runs on the configs of the best zone only, so agreement
+  reflects placement uncertainty at a fixed zone rather than differences between
+  zone positions.
+
+### Fixed
+- Bottom-right "Quality Score" axis is no longer hard-capped at 2.2 — it
+  auto-scales to the data, so the curve is no longer clipped.
+
+---
+
 ## [1.1.0] — 2026-06-24 — Unified placement engine, camera budget, performance
 
 ### Added

@@ -194,6 +194,10 @@ def load_config(yaml_path: str) -> "_Ns":
         total_cameras                = (int(opt["total_cameras"])
                                         if opt.get("total_cameras") is not None
                                         else None),
+        # Consensus analysis: keep the top-K scoring configs across all restarts
+        # and, at the end, report which camera positions are stable vs flexible
+        # and which config is most representative (medoid). 0 = disabled.
+        consensus_topk               = int(opt.get("consensus_topk", 0)),
     )
 
     # FREE mode flag — the optimiser decides the wall/tripod split.

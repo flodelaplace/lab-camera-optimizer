@@ -439,6 +439,7 @@ def greedy_place_cameras(cam_A_cands, cam_B_cands,
 
     best_score, best_cam_A, best_cam_B = -1.0, [], []
     no_improvement = 0
+    restart_results = []   # every restart's final config (for consensus analysis)
 
     pbar = tqdm(total=n_restarts, desc="  Restarts", unit="restart",
                 ncols=90, colour="cyan", disable=quiet)
@@ -487,6 +488,9 @@ def greedy_place_cameras(cam_A_cands, cam_B_cands,
             cur_A, cur_B, sample_points, cfg, state)
         bilat = min(s_tot, n_tot) / max(s_tot, n_tot, 1e-6) * 100
 
+        restart_results.append({"score": final_score,
+                                "cam_A": list(cur_A), "cam_B": list(cur_B)})
+
         if final_score > best_score:
             best_score, best_cam_A, best_cam_B = final_score, list(cur_A), list(cur_B)
             is_new_record, no_improvement = True, 0
@@ -533,4 +537,4 @@ def greedy_place_cameras(cam_A_cands, cam_B_cands,
             break
 
     pbar.close()
-    return best_cam_A, best_cam_B, best_score, sts_pos
+    return best_cam_A, best_cam_B, best_score, sts_pos, restart_results

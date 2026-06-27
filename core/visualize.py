@@ -454,7 +454,12 @@ def draw_coverage_bar_chart(ax, cam_A_list, cam_B_list, score, cfg, state):
     ax_score.plot(x_full, scores_arr, color="lime", linewidth=2.5, zorder=4, label="Quality Score")
     ax_score.set_ylabel("Quality Score", color="green", fontsize=18, fontweight="bold")
     ax_score.tick_params(axis='y', labelcolor="green", labelsize=14)
-    ax_score.set_ylim(0, 2.2)  # Échelle standardisée fixée à 2.2
+    # Auto-scale the quality-score axis to the data (was hard-capped at 2.2,
+    # which clipped the curve in well-covered zones).
+    _smax = float(np.nanmax(scores_arr)) if len(scores_arr) else 0.0
+    if not np.isfinite(_smax) or _smax <= 0:
+        _smax = 1.0
+    ax_score.set_ylim(0, _smax * 1.1)
 
     ax.axvline(walk_x_start, color='steelblue', lw=2, ls='-', zorder=5)
     ax.axvline(walk_x_end,   color='steelblue', lw=2, ls='-', zorder=5)

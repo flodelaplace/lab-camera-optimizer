@@ -147,7 +147,7 @@ def process_combo(params):
     )
 
     # ── Run greedy optimisation (quiet — no tqdm in workers) ──────────────
-    best_cam_A, best_cam_B, best_score, best_sts = greedy_place_cameras(
+    best_cam_A, best_cam_B, best_score, best_sts, restart_results = greedy_place_cameras(
         cam_A_cands, cam_B_cands,
         sample_points, cfg, state,
         n_restarts  = cfg.opt.restarts_per_combo,
@@ -164,6 +164,7 @@ def process_combo(params):
         "best_score":       best_score,
         "best_sts":         best_sts,
         "state":            state,
+        "restart_results":  restart_results,
         "n_cam_A_cands":    len(cam_A_cands),
         "n_cam_B_cands":    len(cam_B_cands),
         "n_sample_points":  len(sample_points),

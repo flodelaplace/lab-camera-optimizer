@@ -215,11 +215,13 @@ def main():
                     f" = {n_placements} placements (move together)")
         LOG.log("")
 
+    consensus_archive    = []   # every restart's config (tagged with its combo)
     global_best_score    = -1.0
     global_best_cam_A    = []
     global_best_cam_B    = []
     global_best_sts      = (CFG.STS_X, CFG.STS_Y)
     global_best_state    = None
+    global_best_combo    = None   # combo label of the winning zone position
     record_counter       = [0]
     combo_best_configs   = {}
 
@@ -314,6 +316,10 @@ def main():
                 cidx        = result["combo_idx"]
                 clabel      = result["combo_label"]
                 clabel_short = result["combo_label_short"]
+                _rr = result.get("restart_results", [])
+                for _r in _rr:
+                    _r["combo"] = clabel
+                consensus_archive.extend(_rr)
                 best_cam_A  = result["best_cam_A"]
                 best_cam_B  = result["best_cam_B"]
                 best_score  = result["best_score"]
@@ -341,6 +347,7 @@ def main():
                     global_best_cam_B  = list(best_cam_B)
                     global_best_sts    = best_sts
                     global_best_state  = combo_state
+                    global_best_combo  = clabel
 
                 pbar.set_postfix({"best": f"{global_best_score:.1f}"})
                 pbar.update(1)
@@ -458,7 +465,7 @@ def main():
                                show_window=False, save_path=graph_path)
             LOG.log(f"       Graph: {graph_path}")
 
-        best_cam_A, best_cam_B, best_score, best_sts = greedy_place_cameras(
+        best_cam_A, best_cam_B, best_score, best_sts, restart_results = greedy_place_cameras(
             cam_A_cands, cam_B_cands,
             sample_points, CFG, state,
             n_restarts  = CFG.opt.restarts_per_combo,
@@ -466,6 +473,9 @@ def main():
             log         = LOG.log,
             on_record   = _on_record,
         )
+        for _r in restart_results:
+            _r["combo"] = combo_label
+        consensus_archive.extend(restart_results)
 
         combo_best_configs[combo_label] = {
             "cam_A":          list(best_cam_A),
@@ -485,6 +495,7 @@ def main():
             global_best_cam_B  = list(best_cam_B)
             global_best_sts    = best_sts
             global_best_state  = dict(state, sts_x=best_sts[0], sts_y=best_sts[1])
+            global_best_combo  = combo_label
             LOG.log("  BEST GLOBAL CONFIG SO FAR")
         else:
             LOG.log("")
@@ -525,6 +536,61 @@ def main():
                                                  CFG, global_best_state)
     print_results(global_best_cam_A, global_best_cam_B,
                   global_best_score, (south_s, north_s), CFG, global_best_state)
+
+    # ── Consensus / robustness analysis ───────────────────────────────────
+    # Run the consensus on the configs of the WINNING zone only (same zone
+    # position), so the agreement reflects genuine placement uncertainty at a
+    # fixed zone, not the fact that different zones want different cameras.
+    if getattr(CFG.opt, "consensus_topk", 0) > 0 and consensus_archive:
+        import json
+        from core.consensus import summarise, plot_consensus
+
+        K = CFG.opt.consensus_topk
+        zone_entries = [e for e in consensus_archive
+                        if e.get("combo") == global_best_combo] or consensus_archive
+        topk = sorted(zone_entries, key=lambda e: e["score"], reverse=True)[:K]
+        summ = summarise(topk)
+
+        wsegs = global_best_state["wall_segments"]
+        wy    = global_best_state["walk_y"]
+
+        LOG.log(f"\n{'='*65}")
+        LOG.log(f"  CONSENSUS — best zone: {global_best_combo}")
+        LOG.log(f"  (top {summ['n']} configs of that zone; "
+                f"{len(zone_entries)} configs available for it)")
+        LOG.log(f"  Score range : {summ['score_min']:.2f} – {summ['score_max']:.2f}"
+                f"  (spread {summ['score_spread_pct']:.2f}%,"
+                f" median {summ['score_median']:.2f})")
+        LOG.log(f"  Most representative (medoid) score: {summ['medoid_score']:.2f}")
+        LOG.log(f"  Stable positions (>=70% agree within {summ['radius']}m): "
+                f"{summ['n_stable']}/{summ['n_cams']}")
+        LOG.log(f"  {'pos':<16}{'sensor':<10}{'pan':<14}{'tilt':<8}"
+                f"{'pos%':<7}{'aim±':<8}")
+        for cam in summ["cameras"]:
+            cx, cy = cam["x"], cam["y"]
+            wn  = wall_normal_at(cx, cy, wsegs, CFG.ROOM_CORNERS,
+                                 CFG.ROOM_HEIGHT, CFG.obstacles)
+            pan = (cam["angle"] - wn + 180) % 360 - 180
+            pan_s = (f"{abs(pan):.0f}d {'R' if pan > 1 else 'L' if pan < -1 else '-'}")
+            d_perp = max(abs(cy - wy), 0.3)
+            tilt = abs(math.degrees(math.atan2(CFG.HUMAN_HEIGHT/2.0 - cam["height"], d_perp)))
+            sensor = ("Portrait" if cam["orient"] == "P" else "Landscape")
+            tag = "STABLE" if cam["pos_frac"] >= 0.7 else "flexible"
+            LOG.log(f"     ({cx:5.2f},{cy:5.2f})  {sensor:<9} pan={pan_s:<10}"
+                    f" t{tilt:.0f}d   {cam['pos_frac']*100:3.0f}%   "
+                    f"±{cam['angle_std']:.0f}d  {tag}")
+        cons_graph = os.path.join(run_dir, "CONSENSUS.png")
+        plot_consensus(topk, summ, CFG, cons_graph,
+                       walk_y=wy, human_height=CFG.HUMAN_HEIGHT)
+        LOG.log(f"  Consensus graph: {cons_graph}")
+
+        # Persist the top-K archive so the consensus can be re-analysed offline.
+        with open(os.path.join(run_dir, "consensus_topk.json"), "w") as _jf:
+            json.dump([{"score": e["score"], "combo": e.get("combo"),
+                        "cam_A": [list(c) for c in e["cam_A"]],
+                        "cam_B": [list(c) for c in e["cam_B"]]} for e in topk],
+                      _jf, indent=1)
+        LOG.log(f"{'='*65}")
 
     # ── Final graph ───────────────────────────────────────────────────────
     final_graph = os.path.join(run_dir, f"FINAL_RESULT_score{global_best_score:.0f}.png")
