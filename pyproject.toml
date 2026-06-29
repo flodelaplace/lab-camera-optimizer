@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lab-camera-optimizer"
-version = "1.1.1"
+version = "1.1.2"
 description = "Automated camera placement optimiser for markerless biomechanics motion capture labs"
 readme = "README.md"
 license = "MIT"

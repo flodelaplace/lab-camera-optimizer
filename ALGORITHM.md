@@ -30,6 +30,7 @@ how to tune every parameter.
    - 6.3 [Bilateral axis `walk_y`](#63-bilateral-axis-walk_y)
 7. [Camera orientation logic](#7-camera-orientation-logic)
 8. [Tuning guide — all parameters](#8-tuning-guide--all-parameters)
+9. [Consensus / robustness analysis](#9-consensus--robustness-analysis)
 
 ---
 
@@ -475,6 +476,7 @@ rather than splitting equally between both.
 | YAML key | Default | Effect |
 |---|---|---|
 | `total_cameras` | `null` | `null` → fixed mode (each set places its `count_max`). An int → free mode: allocate this many cameras across sets within their `[count_min, count_max]`. |
+| `consensus_topk` | `0` | `>0` → after optimising, run the consensus/robustness analysis on the top-K configs of the winning zone (see §9). |
 | `target_coverage` | `4` | Target number of cameras per point. Score saturates above this. Typically 3–6 for biomechanics. |
 | `bilateral_weight` | `0.8` | Weight of the bilateral constraint. `0` = disabled, `1` = fully enforced. |
 | `vertical_coverage_threshold` | `0.9` | Minimum fraction of body height a camera must see to count. `0.9` = must see at least 90% of the body. |
@@ -496,4 +498,43 @@ rather than splitting equally between both.
 | Reduce combos | Reduce `x_offsets`, `y_offsets`, `x_start_options`, `y_options` to fewer values |
 | Better bilateral | Increase `bilateral_weight` (0.85–0.95), increase `target_coverage` |
 | Better corner coverage | Reduce `wall_step` near corners, increase `restarts_per_combo` |
+
+---
+
+## 9. Consensus / robustness analysis
+
+Enabled with `optimization.consensus_topk: K` (`0` = off). The score is a
+heuristic and its surface can be nearly flat — several quite different layouts
+may score almost the same. A single "best" is then a fragile choice. The
+consensus answers *how much to trust it*.
+
+**What it does**
+
+1. Keep every restart's final configuration, tagged with its zone (combo).
+2. Take the **winning zone** (the combo of the global best) and its **top-K**
+   configurations — so the comparison is at a *fixed* zone position, and any
+   disagreement reflects genuine placement uncertainty rather than different
+   zones wanting different cameras.
+3. Across those K configs measure, per camera of the **medoid** (the config
+   minimising total placement distance to all others, via per-role optimal
+   assignment):
+   - **position agreement** — fraction of the K configs that place a same-role
+     camera within `radius` (0.8 m) of it;
+   - **aim-angle agreement** — circular spread of those cameras' viewing angles.
+
+**Outputs**
+
+- `CONSENSUS.png` — density of camera positions across the top-K + the medoid
+  config, each camera drawn with an aim arrow, sensor orientation, mount height
+  and downward tilt, coloured green (position stable ≥70 %) or orange (flexible).
+- `consensus_topk.json` — the top-K configs, for offline re-analysis (e.g. a
+  tighter top-5) without re-running.
+- A log report: score spread, medoid score, and the per-camera stability table.
+
+**How to read it.** Positions agreed by ≥70 % of the top-K are robust — place
+them confidently (in an enclosed room these are usually the corners and walls,
+forced by geometry). The flexible ones can be adjusted to physical constraints
+with little score loss. A small score spread with most positions stable means
+the result is trustworthy; a large spread with many flexible positions means the
+choice is genuinely uncertain and worth more restarts or a human decision.
 

@@ -217,10 +217,12 @@ def plot_consensus(entries, summary, cfg, save_path, walk_y=None, human_height=1
         ax.plot(cx, cy, 'o', color=col, ms=15, markeredgecolor='black',
                 markeredgewidth=1.5, zorder=7)
 
-        # downward tilt toward the capture axis
+        # downward tilt toward the subject along the camera's aim direction
+        # (matches the scorer; perpendicular distance would overestimate it)
         if walk_y is not None:
-            d_perp = max(abs(cy - walk_y), 0.3)
-            tilt = abs(math.degrees(math.atan2(human_height / 2.0 - cam["height"], d_perp)))
+            from .room import cam_fixed_tilt
+            tilt = abs(math.degrees(cam_fixed_tilt(cx, cy, cam["height"],
+                                                   cam["angle"], walk_y, human_height)))
         else:
             tilt = 0.0
 

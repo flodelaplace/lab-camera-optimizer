@@ -21,6 +21,7 @@ all evaluation points, with optional bilateral coverage constraints.
 - **Line-of-sight** — occlusion by walls and floor-to-ceiling obstacles
 - **Bilateral constraint** — ensures coverage from both sides of the capture axis (configurable weight)
 - **Zone sweep** — automatically tests multiple corridor/polygon zone positions and finds the best layout
+- **Consensus / robustness analysis** — optionally reports which camera positions and aim angles are *robust* (agreed by most near-best configs) vs flexible, so you know how much to trust the result
 - **Room preview** — top-down visualisation of your room before running optimisation
 - **YAML configuration** — no code editing required to adapt to your lab
 
@@ -254,6 +255,7 @@ optimization:
   vertical_coverage_threshold: 0.9
   restarts_per_combo: 15
   total_cameras: null          # null = fixed mode; an int = free allocation
+  consensus_topk: 0            # >0 = run the consensus analysis on the top-K configs
   algo: "greedy_1opt"          # greedy | greedy_1opt
   early_stop: 5                # stop after N restarts with no improvement
   graph_mode: "best_per_combo" # all | records_only | best_per_combo
@@ -262,6 +264,24 @@ optimization:
   tripod_grid_step: 0.70
   distance_quality_factor: 0.001
 ```
+
+### Consensus / robustness analysis
+
+Because the score is a heuristic that can be nearly flat (several quite different
+layouts scoring almost the same), set `consensus_topk: 40` to aggregate the
+top-K configs of the **winning zone** and find out what is actually robust:
+
+- **`CONSENSUS.png`** — a density map of where cameras land across the top-K,
+  with the most-representative (medoid) config overlaid: each camera shows an
+  **aim arrow**, its sensor orientation (Portrait/Landscape), mount height and
+  **downward tilt**, plus its **position agreement** (% of top-K that place a
+  camera there) and **aim-angle agreement**.
+- **`consensus_topk.json`** — the top-K configs, so you can re-analyse offline.
+- The log reports the score spread (is it really a tie?), the stable vs flexible
+  positions, and the medoid score.
+
+Cameras agreed by ≥70% of the top-K are *robust* (place them confidently);
+the rest are *flexible* (adjust to physical constraints with little score loss).
 
 > **Note:** the `point` (STS) capture zone is **optional**. With no `point` zone
 > declared, cameras simply optimise coverage of the corridor / analysis /

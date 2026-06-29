@@ -6,7 +6,7 @@ Functions for logging and printing results.
 import os
 import datetime
 import math
-from .room import wall_normal_at
+from .room import wall_normal_at, cam_fixed_tilt
 
 class Logger:
     def __init__(self):
@@ -61,8 +61,10 @@ def print_results(cam_A_list, cam_B_list, score, bilateral_scores, cfg, state):
     LOG.log(f"Wall cameras ({cam_A.name}):")
     for i, (x, y, angle, orient, zh) in enumerate(cam_A_list):
         side      = 'S' if y < walk_y else 'N'
-        d_perp    = max(abs(y - walk_y), 0.3)
-        tilt_deg  = math.degrees(math.atan2(cfg.HUMAN_HEIGHT / 2.0 - zh, d_perp))
+        # Tilt toward the subject along the camera's AIM direction (same value
+        # the scorer assumed), not the perpendicular distance — the latter
+        # overestimates the downward angle for diagonally-aimed cameras.
+        tilt_deg  = math.degrees(cam_fixed_tilt(x, y, zh, angle, walk_y, cfg.HUMAN_HEIGHT))
         wall_n    = wall_normal_at(x, y, wall_segs, cfg.ROOM_CORNERS, cfg.ROOM_HEIGHT, cfg.obstacles)
         pan_deg   = (angle - wall_n + 180) % 360 - 180
         pan_lbl   = (f"{abs(pan_deg):.0f}deg to the RIGHT" if pan_deg > 1
@@ -74,8 +76,7 @@ def print_results(cam_A_list, cam_B_list, score, bilateral_scores, cfg, state):
     if cam_B and cam_B_list:
         LOG.log(f"\nTripod cameras ({cam_B.name}):")
         for i, (x, y, angle, orient, ih) in enumerate(cam_B_list):
-            d_perp   = max(abs(y - walk_y), 0.3)
-            tilt_deg = math.degrees(math.atan2(cfg.HUMAN_HEIGHT / 2.0 - ih, d_perp))
+            tilt_deg = math.degrees(cam_fixed_tilt(x, y, ih, angle, walk_y, cfg.HUMAN_HEIGHT))
             LOG.log(f"  B{i+1} [{orient}]  pos=({x:.2f}m, {y:.2f}m)  h={ih:.1f}m  "
                     f"angle={angle:.0f}deg  tilt={abs(tilt_deg):.1f}deg")
 

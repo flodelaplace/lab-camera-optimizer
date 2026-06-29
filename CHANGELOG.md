@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.2] — 2026-06-27 — Correct displayed tilt; document consensus
+
+### Fixed
+- **Downward tilt** shown for each camera (in `print_results`, the optimisation
+  log, the consensus report/plot) was computed from the *perpendicular* distance
+  to the capture axis, which **overestimated** it for diagonally-aimed cameras
+  (e.g. a wall camera reported at 57° was really ~8°). It now uses
+  `cam_fixed_tilt` — the same aim-direction tilt the scorer actually assumes.
+  The optimisation itself was unaffected (it always used `cam_fixed_tilt`); only
+  the displayed numbers were wrong.
+- The coverage visualisations (`count_cameras_3d` heatmap, XZ side view, coverage
+  bar chart) used the same perpendicular approximation and are now aligned to
+  `cam_fixed_tilt`, so the displayed coverage matches the score.
+
+### Docs
+- README and ALGORITHM.md now document the consensus / robustness analysis
+  (`consensus_topk`).
+
+---
+
 ## [1.1.1] — 2026-06-27 — Consensus analysis, STS fine search, plot fix
 
 ### Added

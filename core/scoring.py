@@ -224,8 +224,7 @@ def count_cameras_3d(px, py, cam_A_list, cam_B_list,
                                   cam_A.max_range, cam_A.min_range,
                                   wall_segs, obstacles, room_h, human_h, cam_z=zh)
         if in_c:
-            dp = max(abs(cy - walk_y), 0.1)
-            ft = math.atan2(human_h / 2.0 - zh, dp)
+            ft = cam_fixed_tilt(cx, cy, zh, angle, walk_y, human_h)
             if vertical_body_coverage(cx, cy, zh, px, py, fov_v,
                                       human_h, human_fz, human_hz,
                                       v_thresh=v_thresh,

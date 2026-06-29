@@ -32,7 +32,7 @@ import numpy as np
 from tqdm import tqdm
 
 from .room import (point_in_room, point_in_wedge, vertical_body_coverage,
-                   wall_normal_at, wall_angular_limits)
+                   wall_normal_at, wall_angular_limits, cam_fixed_tilt)
 from .scoring import (score_configuration, get_fov,
                       precompute_coverage, score_indexed)
 
@@ -516,8 +516,7 @@ def greedy_place_cameras(cam_A_cands, cam_B_cands,
             obstacles = cfg.obstacles
             for zi, (zx, zy, za, zo, zh) in enumerate(cur_A):
                 side   = 'S' if zy < walk_y else 'N'
-                d_perp = max(abs(zy - walk_y), 0.3)
-                tilt   = math.degrees(math.atan2(cfg.HUMAN_HEIGHT/2.0 - zh, d_perp))
+                tilt   = math.degrees(cam_fixed_tilt(zx, zy, zh, za, walk_y, cfg.HUMAN_HEIGHT))
                 wn     = wall_normal_at(zx, zy, state["wall_segments"],
                                         cfg.ROOM_CORNERS, cfg.ROOM_HEIGHT, obstacles)
                 pan    = (za - wn + 180) % 360 - 180

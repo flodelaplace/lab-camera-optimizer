@@ -214,8 +214,7 @@ def draw_side_view_xz(ax, cam_A_list, cam_B_list, cfg, state):
                 if not in_h: continue
                 horiz_d = math.sqrt((xm-cx)**2 + (walk_y-cy)**2)
                 if horiz_d < 0.01: continue
-                dp = max(abs(cy - walk_y), 0.1)
-                ft = math.atan2(human_h / 2.0 - zh, dp)
+                ft = cam_fixed_tilt(cx, cy, zh, angle, walk_y, human_h)
                 hfv = math.radians(fov_v / 2.0)
                 if ft - hfv <= math.atan2(zm - zh, horiz_d) <= ft + hfv:
                     count += 1.0
@@ -410,8 +409,7 @@ def draw_coverage_bar_chart(ax, cam_A_list, cam_B_list, score, cfg, state):
                                       cam_A.max_range, cam_A.min_range,
                                       wall_segs, obstacles, room_h, human_h, cam_z=zh)
             if in_c:
-                dp = max(abs(cy - walk_y), 0.1)
-                ft = math.atan2(human_h / 2.0 - zh, dp)
+                ft = cam_fixed_tilt(cx, cy, zh, angle, walk_y, human_h)
                 v = vertical_body_coverage(cx, cy, zh, x, walk_y, fov_v,
                                            human_h, human_fz, human_hz,
                                            v_thresh=v_thresh, fixed_tilt_rad=ft)

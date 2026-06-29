@@ -63,7 +63,7 @@ if not _args.no_preview:
     _draw_room(CFG, save_path=_preview_path, show=True)
 
 # ── Import core modules ───────────────────────────────────────────────────────
-from core.room       import build_wall_segments, wall_normal_at
+from core.room       import build_wall_segments, wall_normal_at, cam_fixed_tilt
 from core.candidates import build_sample_points, generate_candidates
 from core.greedy     import greedy_place_cameras
 from core.visualize  import visualize_solution
@@ -572,8 +572,8 @@ def main():
                                  CFG.ROOM_HEIGHT, CFG.obstacles)
             pan = (cam["angle"] - wn + 180) % 360 - 180
             pan_s = (f"{abs(pan):.0f}d {'R' if pan > 1 else 'L' if pan < -1 else '-'}")
-            d_perp = max(abs(cy - wy), 0.3)
-            tilt = abs(math.degrees(math.atan2(CFG.HUMAN_HEIGHT/2.0 - cam["height"], d_perp)))
+            tilt = abs(math.degrees(cam_fixed_tilt(cx, cy, cam["height"],
+                                                   cam["angle"], wy, CFG.HUMAN_HEIGHT)))
             sensor = ("Portrait" if cam["orient"] == "P" else "Landscape")
             tag = "STABLE" if cam["pos_frac"] >= 0.7 else "flexible"
             LOG.log(f"     ({cx:5.2f},{cy:5.2f})  {sensor:<9} pan={pan_s:<10}"
