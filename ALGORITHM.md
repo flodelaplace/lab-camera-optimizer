@@ -31,6 +31,7 @@ how to tune every parameter.
 7. [Camera orientation logic](#7-camera-orientation-logic)
 8. [Tuning guide — all parameters](#8-tuning-guide--all-parameters)
 9. [Consensus / robustness analysis](#9-consensus--robustness-analysis)
+10. [Marker-based mode (optoelectronic systems)](#10-marker-based-mode-optoelectronic-systems)
 
 ---
 
@@ -538,3 +539,59 @@ with little score loss. A small score spread with most positions stable means
 the result is trustworthy; a large spread with many flexible positions means the
 choice is genuinely uncertain and worth more restarts or a human decision.
 
+
+---
+
+## 10. Marker-based mode (optoelectronic systems)
+
+Set `optimization.capture_mode: markerbased` for systems like OptiTrack or
+Vicon. The objective changes from "see the whole body well" to "**triangulate
+every marker**".
+
+### 10.1 What changes vs markerless
+
+| | Markerless | Marker-based |
+|---|---|---|
+| A camera "covers" a point when… | it sees ≥ `vertical_coverage_threshold` of the **whole body** | the **marker is in frame** (whole-body framing not required) |
+| Per-camera score | `v² × dist_quality × weight` | `dist_quality × weight` (linear — no `v²`) |
+| A point/marker counts when… | ≥1 useful camera | seen by **≥ `triangulation_min`** angularly-distinct cameras (else score 0 — cannot triangulate) |
+| Best layouts tend to… | face the walking path | **surround** the capture volume |
+
+Everything else (candidate generation, the unified engine, the combo sweep, the
+consensus) is unchanged.
+
+### 10.2 Body self-occlusion — the cylinder model
+
+With `marker_body: cylinder` the subject is modelled as a vertical cylinder
+(radius `body_radius`) carrying `marker_ring` markers around its circumference at
+`marker_levels` heights (foot→head). A marker is visible to a camera only when:
+
+1. **it is on the near side of the body** — its outward radial normal faces the
+   camera (`normal · (camera − marker) > 0`). Markers on the far side are blocked
+   by the body itself. This is exact for a convex body and costs one dot product.
+2. it is within range and horizontal FOV;
+3. its true height is within the camera's vertical FOV;
+4. it has line-of-sight past walls / obstacles.
+
+A marker is reconstructable when ≥ `triangulation_min` cameras satisfy all four.
+The configuration score is the weighted fraction of reconstructable markers.
+Because the cylinder is rotationally symmetric, the subject's facing direction
+does not matter — no need to test both walk directions.
+
+Tune the fidelity/speed trade-off with `marker_ring` × `marker_levels` (more
+markers = finer but slower).
+
+### 10.3 Result figure
+
+In marker-based mode the final figure is a **marker-reconstruction** view:
+
+- a floor **heatmap** of the % of body markers reconstructable at each position;
+- a **breakdown by body height** (are the low/high markers covered?);
+- the **% reconstructable along the walk axis**.
+
+### 10.4 What is *not* modelled
+
+Marker occlusion by the limbs (arm across the torso), sub-millimetre
+triangulation accuracy, and ceiling mounting. The cylinder captures body
+self-occlusion at a first-order, geometric level — enough to drive placement,
+not a full mocap simulator.

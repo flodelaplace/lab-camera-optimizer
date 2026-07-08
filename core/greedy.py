@@ -404,6 +404,12 @@ def greedy_place_cameras(cam_A_cands, cam_B_cands,
 
     algo      = getattr(cfg.opt, "algo", "greedy_1opt")
     free_mode = bool(getattr(cfg, "FREE_MODE", False))
+    # In the marker-based cylinder model, angle reorientation would re-score
+    # thousands of markers in geometry per angle → the dominant cost, for almost
+    # no gain (candidate angles already aim at the zone). Skip it and take the
+    # decisive score from the precomputed table (score_indexed) instead.
+    cylinder_mode = (getattr(cfg, "CAPTURE_MODE", "markerless") == "markerbased"
+                     and getattr(cfg, "MARKER_BODY", "none") == "cylinder")
     walk_y    = state["walk_y"]
     sts_pos   = (state["sts_x"], state["sts_y"])
 
@@ -473,19 +479,23 @@ def greedy_place_cameras(cam_A_cands, cam_B_cands,
         cur_A = [cam_A_cands[i] for i in selA]
         cur_B = [cam_B_cands[i] for i in selB]
 
-        # ── Reorient (geometry path, off-grid angles) ────────────────────
-        if cur_A and wall_set:
-            sc = _score_full(cur_A, cur_B, search_points, cfg, state)
-            cur_A, _ = _reorient('A', cur_A, wall_set, [], cur_B,
-                                 search_points, cfg, state, sc)
-        if cur_B and tripod_set:
-            sc = _score_full(cur_A, cur_B, search_points, cfg, state)
-            cur_B, _ = _reorient('B', cur_B, tripod_set, cur_A, [],
-                                 search_points, cfg, state, sc)
+        if cylinder_mode:
+            # No reorient; decisive score straight from the coverage table.
+            final_score, s_tot, n_tot = score_indexed(selA, selB, covA, covB, meta, cfg)
+        else:
+            # ── Reorient (geometry path, off-grid angles) ────────────────
+            if cur_A and wall_set:
+                sc = _score_full(cur_A, cur_B, search_points, cfg, state)
+                cur_A, _ = _reorient('A', cur_A, wall_set, [], cur_B,
+                                     search_points, cfg, state, sc)
+            if cur_B and tripod_set:
+                sc = _score_full(cur_A, cur_B, search_points, cfg, state)
+                cur_B, _ = _reorient('B', cur_B, tripod_set, cur_A, [],
+                                     search_points, cfg, state, sc)
+            # ── Decisive score on the FULL point set (exact geometry) ────
+            final_score, _, s_tot, n_tot = score_configuration(
+                cur_A, cur_B, sample_points, cfg, state)
 
-        # ── Decisive score on the FULL point set (exact geometry) ────────
-        final_score, _, s_tot, n_tot = score_configuration(
-            cur_A, cur_B, sample_points, cfg, state)
         bilat = min(s_tot, n_tot) / max(s_tot, n_tot, 1e-6) * 100
 
         restart_results.append({"score": final_score,

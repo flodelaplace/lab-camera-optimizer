@@ -198,7 +198,26 @@ def load_config(yaml_path: str) -> "_Ns":
         # and, at the end, report which camera positions are stable vs flexible
         # and which config is most representative (medoid). 0 = disabled.
         consensus_topk               = int(opt.get("consensus_topk", 0)),
+        # Capture mode:
+        #   "markerless"  — whole-body pose (score rewards v² body coverage)
+        #   "markerbased" — optoelectronic markers: a point must be seen by
+        #                   >= triangulation_min cameras from diverse angles to
+        #                   be reconstructable; whole-body-in-frame is not required.
+        capture_mode                 = str(opt.get("capture_mode", "markerless")),
+        triangulation_min            = int(opt.get("triangulation_min", 2)),
+        # Marker-based body model for self-occlusion (markerbased mode only):
+        #   "none"     — treat each eval point as a single marker (no body volume)
+        #   "cylinder" — a vertical cylinder (the subject) with markers around its
+        #                circumference; markers on the far side are occluded by
+        #                the body itself (a marker is visible only from the side
+        #                its outward radial normal faces).
+        marker_body                  = str(opt.get("marker_body", "none")),
+        marker_ring                  = int(opt.get("marker_ring", 8)),     # markers around the circumference
+        marker_levels                = int(opt.get("marker_levels", 4)),   # marker heights (foot→head)
+        body_radius                  = float(opt.get("body_radius", 0.20)),# cylinder radius (m)
     )
+    cfg.CAPTURE_MODE = cfg.opt.capture_mode
+    cfg.MARKER_BODY  = cfg.opt.marker_body
 
     # FREE mode flag — the optimiser decides the wall/tripod split.
     cfg.FREE_MODE     = cfg.opt.total_cameras is not None

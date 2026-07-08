@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.0] — 2026-07-02 — Marker-based (optoelectronic) capture mode
+
+### Added
+- **Marker-based capture mode** (`optimization.capture_mode: markerbased`) for
+  optoelectronic systems (OptiTrack, Vicon…). A point/marker scores only when
+  seen by ≥ `triangulation_min` angularly-distinct cameras; whole-body framing is
+  not required and the per-camera score is linear (no `v²`).
+- **Cylinder body model** (`marker_body: cylinder`) for **self-occlusion**:
+  markers are placed around a cylinder (`marker_ring` × `marker_levels`,
+  `body_radius`) and a marker on the far side is occluded by the body itself
+  (exact convex front-facing test). Pushes the optimiser to surround the volume.
+- **Marker-based result figure**: floor heatmap of the % of body markers
+  reconstructable, a breakdown by body height, and % along the walk axis.
+
+### Docs
+- README and ALGORITHM.md document both capture modes, the cylinder model and all
+  new parameters; example configs clarified and a minimal `demo.yaml` added.
+
+---
+
 ## [1.1.2] — 2026-06-27 — Correct displayed tilt; document consensus
 
 ### Fixed

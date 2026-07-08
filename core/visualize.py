@@ -14,7 +14,7 @@ from matplotlib.patches import Wedge, Rectangle, Polygon
 from .room import (obs_poly_vertices, obs_label, obs_centroid, obs_height,
                    cam_d_min, cam_side, point_in_room, point_in_wedge,
                    vertical_body_coverage, cam_fixed_tilt)
-from .scoring import get_fov, count_cameras_3d, score_at_point
+from .scoring import get_fov, count_cameras_3d, score_at_point, marker_reconstruction
 
 
 # =============================================================
@@ -504,11 +504,114 @@ def draw_coverage_bar_chart(ax, cam_A_list, cam_B_list, score, cfg, state):
 # MAIN VISUALISATION ENTRY POINT
 # =============================================================
 
+# =============================================================
+# MARKER-BASED RESULT VISUALISATION (cylinder model)
+# =============================================================
+
+def _draw_marker_heatmap(ax, cam_A_list, cam_B_list, cfg, state, step=0.3):
+    """Floor heatmap: fraction of the subject's body markers reconstructable."""
+    corners = cfg.ROOM_CORNERS
+    xs = [c[0] for c in corners]; ys = [c[1] for c in corners]
+    ax.set_facecolor('#1a1a2e')
+    loop = corners + [corners[0]]
+    ax.fill([c[0] for c in loop], [c[1] for c in loop], color='#16213e', zorder=0)
+    ax.plot([c[0] for c in loop], [c[1] for c in loop], color='white', lw=2, zorder=8)
+    cmap = plt.get_cmap('RdYlGn')
+    for xi in np.arange(min(xs), max(xs), step):
+        for yi in np.arange(min(ys), max(ys), step):
+            xm, ym = xi + step/2, yi + step/2
+            if not point_in_room(xm, ym, corners, cfg.obstacles, cfg.ROOM_HEIGHT):
+                continue
+            frac, _ = marker_reconstruction(xm, ym, cam_A_list, cam_B_list, cfg, state)
+            ax.add_patch(Rectangle((xi, yi), step, step, facecolor=cmap(frac),
+                                   edgecolor='none', alpha=0.9, zorder=2))
+    for obs in cfg.obstacles:
+        ax.add_patch(Polygon(obs_poly_vertices(obs), closed=True, facecolor='#444',
+                             edgecolor='white', lw=1, zorder=6, alpha=0.9))
+    for (cx, cy, a, o, h) in cam_A_list:
+        ax.plot(cx, cy, 'o', color='cyan', ms=9, markeredgecolor='black', zorder=9)
+    cam_B = next((c for c in cfg.camera_sets if c.mounting == "tripod"), None)
+    if cam_B:
+        for (cx, cy, a, o, h) in cam_B_list:
+            ax.plot(cx, cy, 's', color='magenta', ms=9, markeredgecolor='black', zorder=9)
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=mcolors.Normalize(0, 1)); sm.set_array([])
+    cb = plt.colorbar(sm, ax=ax, fraction=0.03, pad=0.01)
+    cb.set_label("Markers reconstructable", fontsize=15, color='white')
+    cb.ax.yaxis.set_tick_params(color='white', labelcolor='white')
+    ax.set_aspect('equal'); ax.set_xlabel("X (m)", fontsize=16); ax.set_ylabel("Y (m)", fontsize=16)
+    ax.set_title("Marker reconstruction heatmap (% of body markers with ≥2 views)",
+                 fontsize=17, fontweight='bold')
+
+
+def _draw_marker_alongx(ax, cam_A_list, cam_B_list, cfg, state):
+    walk_y = state["walk_y"]
+    xs = [c[0] for c in cfg.ROOM_CORNERS]
+    xg = np.arange(min(xs), max(xs) + 0.01, 0.2)
+    fr = [marker_reconstruction(x, walk_y, cam_A_list, cam_B_list, cfg, state)[0] for x in xg]
+    ax.axvspan(state["analysis_x_start"], state["analysis_x_end"], color='green', alpha=0.1)
+    ax.plot(xg, np.array(fr) * 100, color='#2ca02c', lw=2.5)
+    ax.axhline(100, color='gray', ls=':', lw=1)
+    ax.set_ylim(0, 105); ax.set_xlim(min(xs), max(xs))
+    ax.set_xlabel("X (m) — along the walk axis", fontsize=16)
+    ax.set_ylabel("% markers reconstructable", fontsize=16)
+    ax.set_title("Reconstruction along the corridor (at walk axis)", fontsize=17, fontweight='bold')
+    ax.grid(True, ls='--', alpha=0.3)
+
+
+def _draw_marker_perlevel(ax, cam_A_list, cam_B_list, cfg, state):
+    walk_y = state["walk_y"]
+    x0, x1 = state["analysis_x_start"], state["analysis_x_end"]
+    xs = np.arange(x0, x1 + 0.01, 0.4)
+    levels = cfg.opt.marker_levels
+    acc = np.zeros(levels); n = 0
+    for x in xs:
+        _, pl = marker_reconstruction(x, walk_y, cam_A_list, cam_B_list, cfg, state)
+        acc += np.array(pl); n += 1
+    perlvl = (acc / n) if n else acc
+    labels = [f"{(j+0.5)/levels*100:.0f}%h" for j in range(levels)]  # height fraction
+    ax.barh(range(levels), perlvl * 100, color='#1f77b4')
+    ax.set_yticks(range(levels)); ax.set_yticklabels(labels)
+    ax.set_xlim(0, 105); ax.set_xlabel("% reconstructable", fontsize=16)
+    ax.set_ylabel("Body height level (foot→head)", fontsize=15)
+    ax.set_title("Reconstruction by body height (analysis zone)", fontsize=17, fontweight='bold')
+    ax.grid(True, ls='--', alpha=0.3, axis='x')
+
+
+def visualize_markerbased(cam_A_list, cam_B_list, score, cfg, state,
+                          show_window=True, save_path=None):
+    """4-panel marker-based figure: top view + marker reconstruction views."""
+    fig = plt.figure(figsize=(30, 18), facecolor='#111122')
+    gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.28)
+    draw_top_view(fig.add_subplot(gs[0, 0]), cam_A_list, cam_B_list, score, cfg, state)
+    _draw_marker_heatmap(fig.add_subplot(gs[0, 1]), cam_A_list, cam_B_list, cfg, state)
+    _draw_marker_perlevel(fig.add_subplot(gs[1, 0]), cam_A_list, cam_B_list, cfg, state)
+    _draw_marker_alongx(fig.add_subplot(gs[1, 1]), cam_A_list, cam_B_list, cfg, state)
+    n_cam = len(cam_A_list) + len(cam_B_list)
+    fig.suptitle(f"Marker-based camera optimisation (cylinder body model)\n"
+                 f"{n_cam} cameras  |  score {score:.1f}  |  "
+                 f"≥{cfg.opt.triangulation_min} views to reconstruct a marker",
+                 fontsize=24, fontweight='bold')
+    out_path = save_path if save_path else "markerbased_result.png"
+    if out_path and __import__('os').path.dirname(out_path):
+        __import__('os').makedirs(__import__('os').path.dirname(out_path), exist_ok=True)
+    plt.savefig(out_path, dpi=150, bbox_inches='tight', facecolor='white')
+    if show_window:
+        plt.show()
+    else:
+        plt.close(fig)
+
+
 def visualize_solution(cam_A_list, cam_B_list, score, cfg, state,
                        show_window=True, save_path=None):
     """
-    Builds and saves the 4-panel visualisation figure.
+    Builds and saves the visualisation figure. In marker-based mode with a body
+    model, renders the dedicated marker-reconstruction figure instead.
     """
+    if (getattr(cfg, "CAPTURE_MODE", "markerless") == "markerbased"
+            and getattr(cfg, "MARKER_BODY", "none") == "cylinder"):
+        return visualize_markerbased(cam_A_list, cam_B_list, score, cfg, state,
+                                     show_window=show_window, save_path=save_path)
+
     fig = plt.figure(figsize=(30, 18), facecolor='#111122')
     gs  = fig.add_gridspec(2, 2, hspace=0.38, wspace=0.32)
     ax_top     = fig.add_subplot(gs[0, 0])

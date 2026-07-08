@@ -12,6 +12,7 @@ all evaluation points, with optional bilateral coverage constraints.
 
 ## Features
 
+- **Two capture modes** — **markerless** (whole-body pose, the default) and **marker-based** (optoelectronic systems like OptiTrack/Vicon: each body marker must be triangulated by ≥2 cameras, with body self-occlusion modelled)
 - **Any room shape** — define any polygon floor plan (L-shaped, rectangular, etc.)
 - **Obstacles & walls** — pillars, partial-height furniture, irregular wall segments
 - **Multiple camera sets** — wall-mounted cameras + tripod cameras, both placed by the same zone-wide optimiser
@@ -250,6 +251,7 @@ capture_zones:
 #### `optimization` — tuning parameters
 ```yaml
 optimization:
+  capture_mode: "markerless"   # markerless | markerbased   (see below)
   target_coverage: 4           # cameras per evaluation point
   bilateral_weight: 0.8        # 0 = disabled, 1 = fully enforced
   vertical_coverage_threshold: 0.9
@@ -264,6 +266,43 @@ optimization:
   tripod_grid_step: 0.70
   distance_quality_factor: 0.001
 ```
+
+### Capture mode — markerless vs marker-based
+
+Set `optimization.capture_mode`:
+
+**`markerless`** (default) — for whole-body pose estimation (e.g. ZED cameras).
+A camera "covers" an evaluation point when it sees enough of the **whole body**
+(controlled by `vertical_coverage_threshold`); the score rewards several
+well-placed, angularly-diverse views per point.
+
+**`markerbased`** — for optoelectronic systems (OptiTrack, Vicon…). Here the goal
+is different: **each body marker must be seen by at least `triangulation_min`
+cameras** (default 2) to be reconstructed in 3D. So:
+
+- whole-body framing is *not* required — a marker only needs to be in frame;
+- a point scores 0 unless it is seen by ≥ `triangulation_min` **angularly-distinct**
+  cameras (you cannot triangulate a marker from a single view);
+- optionally, `marker_body: cylinder` models the subject as a cylinder with
+  markers around it, so **markers on the far side are occluded by the body
+  itself** — this pushes the optimiser to *surround* the capture volume.
+
+```yaml
+optimization:
+  capture_mode: "markerbased"
+  triangulation_min: 2      # min cameras that must see a marker to reconstruct it
+  marker_body: "cylinder"   # none | cylinder  (cylinder adds body self-occlusion)
+  marker_ring: 8            # markers around the body circumference
+  marker_levels: 4          # marker heights (foot → head)
+  body_radius: 0.20         # cylinder radius (m)
+```
+
+In marker-based mode the result figure is a **marker-reconstruction** view: a
+floor heatmap of the % of body markers reconstructable at each position, a
+breakdown by body height, and the % along the walk axis.
+
+> **Tip:** marker-based benefits from more **varied camera heights** (to cover
+> foot→head markers and reduce occlusion) than markerless.
 
 ### Consensus / robustness analysis
 
@@ -381,13 +420,16 @@ The full technical documentation is in **[ALGORITHM.md](ALGORITHM.md)**. Here is
 | Component | Description |
 |---|---|
 | **Sample grid** | Evaluation points distributed across capture zones, weighted by `priority` |
-| **Score per point** | `v²` (vertical body coverage) × `dist_quality` × bilateral factor × angular diversity |
-| **Bilateral factor** | Rewards cameras on both sides of the capture axis (configurable weight) |
-| **Greedy** | Cameras added one by one to maximise score; fast but local optima |
-| **Greedy + 1-opt** | Greedy init with diverse spatial spread, then 1-opt local search; recommended |
-| **Coverage ratio** | Penalises candidates that see only a tiny slice of the zone, regardless of proximity |
-| **Combo sweep** | Tests all combinations of zone positions (X offset, Y position, run-up distance) |
-| **walk_y** | Bilateral axis auto-derived from the highest-priority zone centroid each combo |
+| **Unified engine** | Wall and tripod cameras are placed by the same routine (diverse init → 1-opt → reorient) |
+| **Score (markerless)** | `v²` (whole-body coverage) × `dist_quality` × bilateral × angular diversity, per point |
+| **Score (marker-based)** | Each marker needs ≥2 angularly-distinct views; `cylinder` body model adds self-occlusion |
+| **Camera budget** | Fixed count per set, or a total the optimiser splits across sets (`total_cameras`) |
+| **Combo sweep** | Tests combinations of zone positions and keeps the globally best |
+| **Consensus** | Optional: reports which camera positions/angles are robust vs flexible across the top-K |
+| **Performance** | Per-combo coverage is precomputed once so the search is table-lookups, not re-geometry |
+
+> Full technical documentation — scoring, algorithm, both capture modes, the
+> consensus and every parameter — is in **[ALGORITHM.md](ALGORITHM.md)**.
 
 ---
 
