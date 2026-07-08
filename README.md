@@ -433,6 +433,13 @@ The full technical documentation is in **[ALGORITHM.md](ALGORITHM.md)**. Here is
 
 ---
 
+## Publication
+
+Presented at **JED 2026**:
+
+- 📄 [Abstract (PDF)](docs/JED26_abstract_FD.pdf)
+- 🖼️ [Poster (PDF)](docs/JED26_poster_FD.pdf)
+
 ## Citing this tool
 
 If you use this tool in a research publication, please cite it using the
